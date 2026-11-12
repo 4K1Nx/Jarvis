@@ -106,6 +106,9 @@ class Viv:
             self._outbox.append(text)
             self._wake_requested = True
 
+    def remind(self, text: str) -> None:
+        self.notify(f"Lembrete agendado pelo usuário chegou na hora: {text}")
+
     # ---- laço principal --------------------------------------------------
     async def run(self) -> None:
         self._loop = asyncio.get_running_loop()

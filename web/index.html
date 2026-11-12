@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viv</title>
+<link rel="stylesheet" href="/static/viv.css">
+</head>
+<body data-state="sleeping">
+<canvas id="core" aria-hidden="true"></canvas>
+<svg id="links" aria-hidden="true"></svg>
+
+<header class="top">
+  <div class="brand"><span class="brand-name">VIV</span><span class="brand-sub">assistente pessoal</span></div>
+  <div class="status" role="status" aria-live="polite">
+    <span class="dot"></span><span id="state-label">Dormindo</span>
+    <span id="conn" class="conn" hidden>reconectando…</span>
+  </div>
+  <div class="meta"><span id="mic" title="Microfone em uso"></span><span id="clock"></span></div>
+</header>
+
+<section id="cards" aria-label="Informações e ações"></section>
+<section id="confirm-slot" aria-live="assertive"></section>
+
+<footer class="bottom">
+  <div class="caption" aria-live="polite">
+    <p id="caption-user" class="caption-user"></p>
+    <p id="caption-viv" class="caption-viv"></p>
+  </div>
+  <button id="wake" type="button">Ativar Viv</button>
+  <p id="hint" class="hint">Diga “Ei, Viv”, bata duas palmas ou aperte Ctrl+Alt+V.</p>
+</footer>
+
+<script src="/static/core.js"></script>
+<script src="/static/cards.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

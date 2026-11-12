@@ -1,6 +1,6 @@
 # Viv Live — configuração
 assistant: {name: Viv, idle_seconds: 60, history_turns: 12}
-live: {model: gemini-3.8-live, voice: Aoede, language: pt-BR, api_key_env: GEMINI_API_KEY}
+live: {model: gemini-3.8-live, api_version: v1beta, voice: Aoede, language: pt-BR, api_key_env: GEMINI_API_KEY}
 audio:
   input_device_name: null   # null = microfone padrão do Windows; ou parte do nome
   headphones: false         # true = microfone aberto enquanto a Viv fala

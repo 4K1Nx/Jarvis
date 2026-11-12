@@ -1,9 +1,0 @@
-unsloth
-trl>=0.12
-peft
-datasets
-transformers>=4.46
-bitsandbytes
-accelerate
-openwakeword[training]
-piper-sample-generator

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VIV 1.2 · Interface de presença</title>
+<link rel="stylesheet" href="/static/viv.css">
+<link rel="stylesheet" href="/static/viv-core.css">
+<script src="/static/viv.js" defer></script>
+
+</head>
+<body data-state="idle">
+<header><a class="brand" href="/" aria-label="Viv início"><span class="brand-mark viv-emblem"><svg viewBox="0 0 100 90" aria-hidden="true"><path class="facet-gold" d="M50 6 94 82 53 58Z"/><path class="facet-green" d="M50 6 47 58 6 82Z"/><path class="facet-light" d="M6 86 50 62 94 86Z"/></svg></span><span>VIV<small>INTERFACE DE PRESENÇA</small></span></a><div class="header-right"><span class="version">VERSÃO 1.2</span><span id="conn" class="connection">Conectando à HUD…</span></div></header>
+<main>
+<div class="intro"><div><p class="eyebrow">INTELIGÊNCIA EM SINTONIA</p><h1>Uma presença. Uma conversa.</h1></div><p class="quiet" id="mode">Inicializando interface</p></div>
+
+<div class="layout">
+<aside class="stack system-stack">
+<section class="panel"><h2><span>01</span> Sistema</h2><div class="system-item"><i></i><div><b>Reconhecimento de voz</b><p id="stt">Whisper · aguardando estado</p></div></div><div class="system-item"><i id="gemini-dot" class="unknown"></i><div><b>Gemini</b><p id="gemini">Conexão não verificada</p><button id="verify-gemini" class="subtle">Verificar conexão</button><details id="model-picker"><summary>Modelos Gemini ? menor custo primeiro</summary><p class="caption">Preços de referência em US$/1 milhão de tokens de entrada / saída. Não representa cobrança nesta sessão. Referência: 16/10/2026.</p><ol id="model-list"></ol><p class="caption" id="model-selection-state">Aguardando teste.</p><button id="select-model" class="subtle">Testar do mais barato ao mais caro</button></details></div></div><div class="system-item"><i></i><div><b>Síntese de voz</b><p id="tts">Edge TTS · Francisca</p></div></div><div class="divider"></div><div class="pair"><span>Microfone</span><b id="mic">—</b></div><div class="meter" aria-hidden="true"><i id="mic-level"></i></div><p class="caption">Nível do microfone · resposta de voz separada.</p><p class="caption" id="audio-health">Aguardando sinal de áudio.</p><label class="sensitivity-label" for="sensitivity">Sensibilidade da escuta</label><select id="sensitivity"><option value="low">Baixa · ambiente ruidoso</option><option value="normal" selected>Normal · equilibrada</option><option value="high">Alta · voz distante</option></select><label class="sensitivity-label"><input type="checkbox" id="transcription-test"> Testar só transcrição</label><p class="caption" id="transcription-note">Ative antes de falar: próximo turno sem ações nem Gemini.</p><p class="caption" id="sensitivity-note">Ajuste temporário nesta sessão.</p></section>
+<section class="panel"><h2><span>02</span> Recursos reais</h2><div class="pair"><span>RAM da Viv</span><b id="ram-process">—</b></div><div class="pair"><span>RAM do sistema</span><b id="ram-system">—</b></div><div class="meter gold"><i id="ram-bar"></i></div><p class="caption">Uso medido nesta máquina. Sem estimativa de VRAM.</p><div class="divider"></div><div class="pair"><span>Memória</span><b id="memory">—</b></div><p class="caption">Contexto preservado durante a sessão.</p></section>
+<section class="panel diagnostics"><h2><span>03</span> Diagnóstico de latência</h2><div class="hero-time"><strong id="response-time">—</strong><span>DO FIM DA CAPTURA AO ÁUDIO</span></div><div id="timings"></div><div class="pair total"><span>Turno completo</span><b id="total-time">—</b></div><p class="caption" id="timing-status">Aguardando a primeira conversa medida.</p><p class="caption">Busca integra o tempo de ferramentas. Não some os dois.</p></section>
+<section class="panel avatar-panel"><div class="avatar-glyph" aria-hidden="true">◇</div><div><h2>Projeção futura</h2><p>Espaço reservado para um avatar feminino sintético original.</p><span class="pill">EM DESENVOLVIMENTO</span></div></section>
+</aside>
+<section class="presence panel">
+<div class="presence-top"><span class="eyebrow">NÚCLEO DE PRESENÇA</span><span class="pill" id="state" role="status">Em espera</span></div>
+<div class="orb-scene flat-core" aria-hidden="true">
+  <div class="core-aura"></div>
+  <svg class="core-dial" viewBox="0 0 400 400" fill="none">
+    <circle class="dial-track" cx="200" cy="200" r="164"/>
+    <circle class="dial-ticks" cx="200" cy="200" r="158" pathLength="120"/>
+    <path class="dial-guides" d="M200 29v12 M200 359v12 M29 200h12 M359 200h12"/>
+    <circle class="dial-inner" cx="200" cy="200" r="112"/>
+  </svg>
+  <svg class="core-orbit orbit-primary" viewBox="0 0 400 400" fill="none">
+    <circle cx="200" cy="200" r="143" pathLength="360"/>
+    <circle class="orbit-node" cx="200" cy="57" r="2.5"/>
+  </svg>
+  <svg class="core-orbit orbit-secondary" viewBox="0 0 400 400" fill="none">
+    <circle cx="200" cy="200" r="128" pathLength="360"/>
+  </svg>
+  <div class="core-pulse"></div>
+  <svg class="flat-mark" viewBox="0 0 100 90">
+    <defs>
+      <linearGradient id="core-emerald" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9af6cf"/><stop offset=".45" stop-color="#43d99a"/><stop offset="1" stop-color="#138968"/></linearGradient>
+      <linearGradient id="core-gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff0bb"/><stop offset=".55" stop-color="#e7c76f"/><stop offset="1" stop-color="#b08b40"/></linearGradient>
+      <linearGradient id="core-silver" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fbfff3"/><stop offset="1" stop-color="#aebfaf"/></linearGradient>
+    </defs>
+    <path class="facet-gold" d="M50 6 94 82 53 58Z"/>
+    <path class="facet-green" d="M50 6 47 58 6 82Z"/>
+    <path class="facet-light" d="M6 86 50 62 94 86Z"/>
+  </svg>
+</div>
+<div class="core-name">VIV<span>INTELIGÊNCIA EM SINTONIA</span></div><div class="listening-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><section id="status-alert" role="status" aria-live="polite"><span class="status-light"></span><div><strong id="status-title">Em espera</strong><p id="status-detail">Ative a Viv com duas palmas ou pelo botão.</p></div><span class="status-code">VIV / SISTEMA</span></section>
+<div class="activation"><button id="wakeBtn" class="primary">ATIVAR VIV</button><p>Diga “Ei, Viv” ou bata duas palmas</p></div>
+</section>
+<aside class="stack conversation-stack"><section class="panel chat-panel"><h2>Conversa <span class="live-tag">AO VIVO</span></h2><div class="conversation"><div class="bubble"><span class="speaker-label">VOCÊ</span><p id="user">Ative a Viv para começar a conversar.</p></div><div class="bubble viv-bubble"><span class="speaker-label">VIV</span><p id="assistant">Sua próxima conversa começa aqui.</p></div></div>
+<section id="confirm" class="confirmation" hidden><h2>Confirmação necessária</h2><p>A ação aguarda sua autorização.</p><pre id="pending"></pre><p>Recusa automática em <b id="countdown">25</b> s</p><div class="actions"><button id="approve">Confirmar ação</button><button id="reject">Recusar</button></div></section>
+<p class="caption turn-note">Pode interromper a fala da Viv para conversar. Use fones para evitar eco. Após a resposta, você tem 8 segundos para continuar.</p>
+</section>
+
+<section class="panel tips-panel" aria-labelledby="tips-title"><h2 id="tips-title">Dicas da Viv</h2><p class="caption">Experimente quando quiser.</p><details open><summary>Organize seu dia</summary><p>Diga “Me lembre em cinco minutos de beber água”. Para conferir o que está marcado, peça “Liste meus lembretes”.</p></details><details><summary>Antes de encerrar o dia</summary><p>Salve seu trabalho. Se quiser fechar um aplicativo, diga “Feche o Minecraft” e confirme a ação quando a Viv pedir.</p></details><details><summary>Explore sem Gemini</summary><p>Peça “Pesquise sobre astronomia”, “Leia minha tela” ou “Diagnóstico do PC”. A leitura local da tela depende do texto acessível da janela.</p></details><p class="caption">Estas dicas não criam lembretes nem executam ações.</p></section>
+<section class="panel sources-panel"><h2><span>04</span> Pesquisa e fontes</h2><p id="research-status" role="status">Nenhuma pesquisa nesta sessão.</p><div id="sources"></div><p class="caption">Links retornados pela ferramenta. Relevância não equivale a confirmação factual.</p></section>
+<section class="panel"><h2><span>05</span> Atividade</h2><details class="gap-details"><summary>Limitações registradas</summary><p id="gap-summary" class="caption">Nenhuma pendência registrada até agora.</p></details><p id="last-reminder" role="status" class="caption"></p><div id="log" role="log" aria-label="Atividade da Viv"></div><div class="module-row"><span id="v-skill">Comandos: —</span><span id="v-rag">Documentos: —</span><span id="v-spk">Voz: —</span><span id="v-pro">Rotinas: —</span><span id="v-learn">Aprendizado: —</span></div></section>
+</aside>
+</div>
+<details class="panel audit"><summary>Auditoria de ações <span id="audit-count">—</span></summary><div id="audit-list"></div><button id="audit-export">Exportar auditoria</button></details>
+<footer><span>VIV / VOZ · CONTEXTO · PRESENÇA</span><span>Whisper local · Gemini e Edge TTS online</span></footer>
+</main></body></html>

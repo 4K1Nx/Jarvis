@@ -13,3 +13,11 @@ data/live_sft.jsonl
 data/live_dpo.jsonl
 models/*.onnx
 models/*.bin
+
+models/faster-whisper-medium/
+
+.venv*/
+_legado/data/
+data/viv_memoria.json
+data/screen.png
+.superpowers/

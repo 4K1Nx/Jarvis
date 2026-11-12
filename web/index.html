@@ -16,11 +16,27 @@
     <span class="dot"></span><span id="state-label">Dormindo</span>
     <span id="conn" class="conn" hidden>reconectando…</span>
   </div>
-  <div class="meta"><span id="mic" title="Microfone em uso"></span><span id="clock"></span></div>
+  <div class="meta"><span id="mic" title="Microfone em uso"></span><span id="clock"></span>
+    <button id="gear" type="button" aria-label="Configurações" aria-expanded="false" aria-controls="settings">⚙</button></div>
 </header>
 
 <section id="cards" aria-label="Informações e ações"></section>
 <section id="confirm-slot" aria-live="assertive"></section>
+
+<aside id="settings" aria-label="Configurações" hidden>
+  <header><h2>Configurações</h2><button id="settings-close" type="button" aria-label="Fechar">×</button></header>
+  <p class="settings-note">A Viv também muda estes ajustes por voz: “Viv, eu uso fones”, “meu nome é…”.</p>
+  <div id="settings-list"></div>
+  <h3>Rotina</h3>
+  <div id="routine-list"></div>
+  <form id="routine-form">
+    <input id="routine-time" type="time" required aria-label="Hora">
+    <input id="routine-text" type="text" maxlength="200" required placeholder="O que acontece" aria-label="Descrição">
+    <select id="routine-days" aria-label="Dias"><option value="todos">Todos os dias</option><option value="uteis">Dias úteis</option><option value="fim de semana">Fim de semana</option></select>
+    <button type="submit">Adicionar</button>
+  </form>
+  <p id="settings-msg" class="settings-msg" role="status"></p>
+</aside>
 
 <footer class="bottom">
   <div class="caption" aria-live="polite">
@@ -34,5 +50,6 @@
 <script src="/static/core.js"></script>
 <script src="/static/cards.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/settings.js"></script>
 </body>
 </html>

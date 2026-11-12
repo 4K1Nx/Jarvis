@@ -35,13 +35,21 @@ class Gate:
     def submit(self, name: str, args: dict | None) -> str:
         if not registry.is_dangerous(name, self.cfg):
             return registry.call(name, args, self.ctx)
+        try:
+            text = registry.confirm_text(name, args)      # valida o pedido antes de incomodar o usuário
+        except Exception as exc:
+            return f"erro: {exc}"
+        voice = bool(getattr(self.speaker, "enrolled", False))
         with self._lock:
             if self.pending is not None:
                 self.audit.record("tool_blocked", tool=name, reason="outra ação pendente")
                 return "recusado: já existe uma ação aguardando confirmação"
-            self.pending = {"name": name, "args": args or {}, "expires": self.clock() + self.timeout}
+            self.pending = {"name": name, "args": args or {}, "text": text, "voice": voice,
+                            "expires": self.clock() + self.timeout}
         self.audit.record("confirmation_requested", tool=name)
-        BUS.emit("confirm", registry.describe(name, args), name=name, args=args or {}, seconds=int(self.timeout))
+        BUS.emit("confirm", text, name=name, args=args or {}, seconds=int(self.timeout), voice=voice)
+        if not voice:
+            return "pendente: peça ao usuário que confirme clicando em Sim na tela (não há cadastro de voz)"
         return "pendente: peça ao usuário que confirme por voz ou na tela"
 
     def on_user_utterance(self, text: str, audio) -> None:
@@ -55,8 +63,10 @@ class Gate:
                 return
             if self.speaker.is_owner(audio):
                 return self._resolve(True, "voz")
-        self.audit.record("confirmation_rejected", reason="voz não reconhecida")
-        BUS.emit("confirm_hint", "Voz não reconhecida. Confirme na tela.")
+        enrolled = bool(getattr(self.speaker, "enrolled", False))
+        self.audit.record("confirmation_rejected", reason="voz não reconhecida" if enrolled else "sem cadastro de voz")
+        BUS.emit("confirm_hint", "Voz não reconhecida. Clique em Sim para confirmar." if enrolled
+                 else "Sem cadastro de voz. Clique em Sim para confirmar.")
 
     def on_click(self, accepted: bool) -> None:
         with self._lock:

@@ -49,7 +49,7 @@
 
   function vanish(node) {
     node.classList.remove('in'); node.classList.add('out');
-    setTimeout(() => { node.remove(); drawLinks(); }, 400);
+    setTimeout(() => { node.remove(); drawLinks(); }, 380);
     drawLinks();
   }
 
@@ -179,6 +179,7 @@
       layer.append(node);
       card.timer = setTimeout(() => removeToast(card), TOAST_LIFE);
     }
+    node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
     requestAnimationFrame(() => { node.classList.add('in'); setTimeout(drawLinks, 480); });
   }
 
@@ -192,7 +193,8 @@
     const total = Math.max(1, +event.seconds || 30), started = Date.now();
     const box = el('div', 'confirm');
     box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-label', 'Confirmar ação');
-    const hint = el('p', 'confirm-hint', 'Diga “sim” ou “não”, ou escolha abaixo.');
+    const hint = el('p', 'confirm-hint', event.voice === false ? 'Clique em Sim para confirmar, ou em Não para cancelar.'
+      : 'Diga “sim” ou “não”, ou escolha abaixo.');
     hint.id = 'confirm-hint';
     const bar = el('div', 'confirm-bar'), fill = el('i'); bar.append(fill);
     const actions = el('div', 'confirm-actions');

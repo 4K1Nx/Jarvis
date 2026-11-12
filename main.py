@@ -34,6 +34,9 @@ class Parts:
     speaker: Any
     watcher: Any
     app: Any
+    settings: Any = None
+    routine: Any = None
+    watch: Any = None
 
 
 def load_config() -> dict:
@@ -68,16 +71,60 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     if audio is None:
         from viv.audio import AudioIO
         audio = AudioIO(cfg)
+    from viv import autostart
+    from viv.routine import RoutineClock
+    from viv.settings import Settings
+    from viv.tools import vision
+    from viv.watch import ScreenWatch
+    settings = Settings(cfg.get("settings", {}).get("path", "data/viv_config.json"), cfg)
+    settings.overlay(cfg)
+    cfg.setdefault("assistant", {}).update(user_name=settings.get("usuario.nome"), user_city=settings.get("usuario.cidade"))
     memory = Memory(cfg["memory"]["path"])
     speaker = Speaker(cfg)
-    ctx = Context(cfg, memory=memory, client=client)
+    ctx = Context(cfg, memory=memory, client=client, settings=settings)
     gate = Gate(cfg, ctx, speaker, Audit(cfg), notify=lambda text: None)
     watcher = WakeWatcher(cfg, audio, on_wake=lambda reason: viv.wake(reason))
     viv = Viv(cfg, audio, gate, memory, watcher, connect, gaps=CapabilityGaps())
     gate.notify = viv.notify
     reminders = Reminders(cfg["reminders"]["path"], viv.remind)
     ctx.reminders = reminders
-    return Parts(viv, gate, memory, reminders, audio, speaker, watcher, create_app(viv, gate, audio, cfg, speaker))
+    ctx.watch = ScreenWatch(lambda question: vision.look(ctx, question), viv.notify)
+
+    def apply_setting(key, value):
+        """Ajuste alterado pela HUD ou pela Viv passa a valer na hora."""
+        if key == "usuario.nome":
+            cfg["assistant"]["user_name"] = value
+        elif key == "usuario.cidade":
+            cfg["assistant"]["user_city"] = value
+        elif key == "audio.fones":
+            audio.configure(headphones=value)
+        elif key == "audio.sensibilidade_interrupcao":
+            audio.configure(threshold=value)
+        elif key == "conversa.segundos_ate_dormir":
+            viv.idle_seconds = float(value)
+        elif key == "ativacao.palmas":
+            watcher.configure(clap=value)
+        elif key == "ativacao.nome":
+            watcher.configure(name=value)
+        elif key == "inicio.com_windows":
+            autostart.apply(value)
+    settings.on_change(apply_setting)
+    app = create_app(viv, gate, audio, cfg, speaker, settings)
+    return Parts(viv, gate, memory, reminders, audio, speaker, watcher, app, settings,
+                 RoutineClock(settings, viv.notify), ctx.watch)
+
+
+def welcome(parts: Parts, delay: float = 6.0) -> None:
+    """Boas-vindas ao ligar o PC: painel "Resumo do dia" e relatório falado."""
+    from viv import briefing
+    from viv.errors import ERRORS
+    from viv.tools import mail, weather
+    time.sleep(delay)
+    unread = (lambda: mail.unread_count(parts.settings)) if (parts.settings.get("email.usuario")
+                                                             and os.environ.get("VIV_EMAIL_SENHA")) else None
+    data = briefing.collect(parts.settings, parts.reminders, ERRORS, fetch_weather=weather.fetch, unread_count=unread)
+    BUS.emit("card", "Resumo do dia", kind="content", format="tabela", body=briefing.panel(data), ok=True)
+    parts.viv.notify(briefing.prompt(data))
 
 
 def toggle(viv) -> None:
@@ -167,7 +214,7 @@ def run_demo(cfg: dict, show: bool) -> None:
     serve(app, cfg)
 
 
-def run_full(cfg: dict, show: bool) -> int:
+def run_full(cfg: dict, show: bool, briefing: bool = False) -> int:
     from dotenv import load_dotenv
     load_dotenv(".env")
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -195,11 +242,16 @@ def run_full(cfg: dict, show: bool) -> int:
     hotkey = Hotkey(cfg["wake"]["hotkey"], lambda: toggle(parts.viv))
     hotkey.start()
     parts.reminders.start()
+    parts.routine.start()
+    if briefing and parts.settings.get("inicio.boas_vindas"):
+        threading.Thread(target=welcome, args=(parts,), daemon=True, name="viv-boas-vindas").start()
 
     def voice():
         try:
             asyncio.run(parts.viv.run())
         except Exception as exc:
+            from viv.errors import ERRORS
+            ERRORS.record("laço de voz", f"{type(exc).__name__}: {exc}")
             print(f"A conversa parou por um erro: {exc}", file=sys.stderr)
             BUS.emit("card", "A conversa parou por um erro", kind="data", body=str(exc)[:200], ok=False)
     threading.Thread(target=voice, daemon=True, name="viv-voice").start()
@@ -210,6 +262,8 @@ def run_full(cfg: dict, show: bool) -> int:
     finally:
         hotkey.stop()
         parts.reminders.stop()
+        parts.routine.stop()
+        parts.watch.stop()
         parts.audio.stop()
     return 0
 
@@ -218,13 +272,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Viv, assistente de voz")
     parser.add_argument("--demo", action="store_true", help="só a HUD com eventos de demonstração")
     parser.add_argument("--no-hud", action="store_true", help="não abrir a janela da HUD")
+    parser.add_argument("--briefing", action="store_true", help="dar as boas-vindas com o resumo do dia (usado ao iniciar com o Windows)")
     args = parser.parse_args()
     cfg = load_config()
     try:
         if args.demo:
             run_demo(cfg, not args.no_hud)
             return 0
-        return run_full(cfg, not args.no_hud)
+        return run_full(cfg, not args.no_hud, args.briefing)
     except KeyboardInterrupt:
         print("Viv encerrada.")
         return 0

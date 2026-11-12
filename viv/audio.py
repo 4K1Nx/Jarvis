@@ -68,6 +68,12 @@ class AudioIO:
         self._last_level = {"mic": 0.0, "out": 0.0}
         self._streams: list = []
 
+    def configure(self, headphones: bool | None = None, threshold: float | None = None) -> None:
+        if headphones is not None:
+            self._headphones = bool(headphones)
+        if threshold is not None:
+            self._threshold = float(threshold)
+
     # ---- ciclo de vida -------------------------------------------------
     def start(self) -> None:
         import sounddevice as sd

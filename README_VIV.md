@@ -22,6 +22,11 @@ Exemplos de pedidos:
 - "pesquisa sobre placas de vídeo" (painel com as fontes e guias no navegador)
 - "otimiza meu PC", "limpa os arquivos temporários" (diagnóstico e limpeza)
 - "aumenta o volume para 60", "o que tem na minha tela?"
+- "me avisa quando o download terminar" (ela vigia a tela e te chama)
+- "tenho e-mail novo?", "lê o segundo"
+- "desinstala o 7-Zip", "quais programas eu tenho?"
+- "meu nome é João", "eu uso fones", "inicia junto com o Windows", "eu acordo às sete nos dias úteis"
+- "quais erros você teve?", "o que deu errado no computador hoje?"
 - "me lembra de tomar água em vinte minutos"
 
 ### A tela
@@ -29,6 +34,38 @@ Exemplos de pedidos:
 - **Painel à esquerda:** a informação que você pediu (clima, pesquisa, listas, tabelas, diagnóstico). Fica até você fechar no ×, pedir outra coisa ou passar pouco mais de um minuto.
 - **Avisos à direita:** cada ação executada. Somem sozinhos.
 - **Cartão central:** confirmação de ação perigosa.
+
+### Configurações e rotina
+
+A engrenagem no canto da HUD abre os ajustes: nome, cidade, fones, sensibilidade da interrupção, tempo até dormir, formas de acordar, início com o Windows, boas-vindas e e-mail. Embaixo fica a rotina, com hora, dias e descrição.
+
+A Viv altera os mesmos ajustes por voz. Tudo fica em `data/viv_config.json`. Um ajuste novo acrescentado em `viv/settings.py` aparece sozinho na tela e passa a ser conhecido por ela.
+
+Na hora de cada item da rotina, ela avisa em voz alta.
+
+### Iniciar com o Windows e boas-vindas
+
+Com "Abrir junto com o Windows" ligado, um atalho na pasta Inicializar abre a Viv quando o computador liga. Ela então dá as boas-vindas com a hora, o clima da sua cidade, a rotina do dia, lembretes, e-mails não lidos, espaço em disco e erros recentes. O mesmo resumo aparece no painel. Para desligar: o ajuste na HUD, ou "Viv, não inicia mais com o Windows".
+
+### Vigia da tela
+
+"Me avisa quando o download terminar" faz a Viv olhar a tela a cada minuto, mesmo dormindo, e te chamar quando acontecer. Cada olhada envia uma captura da tela ao Gemini. "Para de vigiar" encerra. O limite padrão é de três horas.
+
+### E-mail
+
+A Viv lê a caixa de entrada por IMAP: lista não lidos, busca e lê uma mensagem. Ela não envia, não apaga e não marca como lido. O conteúdo dos e-mails que ela lê é enviado ao Gemini para ser resumido.
+
+1. Em Configurações, preencha **E-mail** (para Gmail o servidor já vem certo).
+2. Crie uma senha de app em `myaccount.google.com/apppasswords` (exige verificação em duas etapas).
+3. Acrescente ao `.env`: `VIV_EMAIL_SENHA=a-senha-de-app` e reinicie a Viv.
+
+### Desinstalar programas
+
+"Desinstala o 7-Zip" usa o winget e sempre pede confirmação, mostrando o nome exato do programa. Se o nome falado serve para mais de um programa, ela pergunta qual em vez de escolher.
+
+### Erros
+
+Toda falha (ferramenta, conexão) fica em `data/viv_erros.jsonl`, com a origem e a mensagem, sem os argumentos nem as falas. "Quais erros você teve?" mostra o relatório. "O que deu errado no computador?" mostra os erros do log de eventos do Windows.
 
 ### Limpeza do PC
 
@@ -66,6 +103,7 @@ Ações comuns rodam direto. Estas pedem confirmação antes de executar:
 | Encerrar um aplicativo | `system_kill` |
 | Apagar arquivo ou pasta | `fs_delete` |
 | Limpar temporários, caches e lixeira | `system_limpeza` |
+| Desinstalar um programa | `system_desinstalar` |
 | Gravar por cima, mover, acrescentar ou substituir texto | `fs_write`, `files_move`, `files_append_text`, `files_replace_text` |
 | Rodar comando no shell | `desktop_run_command` |
 
@@ -115,6 +153,12 @@ viv/safety.py      confirmação das ações perigosas
 viv/speaker.py     verificação de voz
 viv/memory.py      fatos sobre você e últimos turnos (data/viv_memoria.json)
 viv/reminders.py   lembretes (data/jobs.json)
+viv/settings.py    configurações e rotina (data/viv_config.json)
+viv/routine.py     avisos da rotina na hora marcada
+viv/briefing.py    boas-vindas ao ligar o PC
+viv/autostart.py   atalho de início com o Windows
+viv/watch.py       vigia da tela
+viv/errors.py      registro de erros (data/viv_erros.jsonl)
 viv/tools/         ferramentas do PC
 web/               HUD
 scripts/           cadastro de voz e sonda da API

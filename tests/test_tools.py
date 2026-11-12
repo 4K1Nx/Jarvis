@@ -6,7 +6,9 @@ from viv.tools.registry import Context
 
 CFG = {"safety": {"dangerous": []}, "tools": {"vision": {"screenshot_path": "data/screen.png"}}}
 EXPECTED = {
-    "desktop_launch_app", "desktop_list_apps", "desktop_type_text", "desktop_hotkey", "desktop_click", "desktop_screenshot",
+    "desktop_launch_app", "desktop_list_apps", "desktop_type_text", "system_programas", "system_desinstalar",
+    "tela_vigiar", "tela_parar_vigia", "tela_vigia_status", "email_listar", "email_buscar", "email_ler",
+    "config_ver", "config_definir", "rotina_adicionar", "rotina_remover", "rotina_listar", "viv_erros", "system_eventos_erro", "desktop_hotkey", "desktop_click", "desktop_screenshot",
     "desktop_run_command",
     "system_volume", "system_status", "system_processes", "system_power", "system_cancel_shutdown", "system_kill",
     "files_find", "files_open", "files_recent", "files_read_text", "files_create_text", "files_append_text",

@@ -132,21 +132,28 @@ class WakeWatcher:
         self._model = w.get("whisper_model", "tiny")
         self._aliases = w.get("aliases", ["Viv"])
         self._transcribe = transcribe
-        self.clap = (ClapDetector(w.get("clap_min_gap_ms", 120), w.get("clap_max_gap_ms", 700))
-                     if w.get("clap_enabled", True) else None)
+        self.clap = ClapDetector(w.get("clap_min_gap_ms", 120), w.get("clap_max_gap_ms", 700))
+        self.clap_on = bool(w.get("clap_enabled", True))
         self._name_enabled = bool(w.get("name_enabled", True))
+        self.name_on = self._name_enabled
         self.name: NameSpotter | None = None
         if self._name_enabled and transcribe is not None:
             self.name = NameSpotter(self._aliases, transcribe)
 
     def prepare(self) -> None:
         """Carrega o Whisper (lento na primeira vez). Falha desliga só a ativação por nome."""
-        if self._name_enabled and self.name is None:
+        if self.name is None:
             try:
                 self.name = NameSpotter(self._aliases, whisper_transcriber(self._model))
             except Exception as exc:
                 print(f"Aviso: ativação por nome indisponível ({exc}). Palmas, atalho e botão continuam.")
                 self._name_enabled = False
+
+    def configure(self, clap: bool | None = None, name: bool | None = None) -> None:
+        if clap is not None:
+            self.clap_on = bool(clap)
+        if name is not None:
+            self.name_on = bool(name)
 
     def reset(self) -> None:
         for detector in (self.clap, self.name):
@@ -159,9 +166,9 @@ class WakeWatcher:
             return
         self._frames += 1
         now = self._frames * FRAME_SECONDS
-        if self.clap is not None and self.clap.feed(frame, now):
+        if self.clap_on and self.clap.feed(frame, now):
             self.reset()
             return self.on_wake("clap")
-        if self.name is not None and self.name.feed(frame, now):
+        if self.name_on and self.name is not None and self.name.feed(frame, now):
             self.reset()
             return self.on_wake("name")

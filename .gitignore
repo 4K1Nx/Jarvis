@@ -21,3 +21,7 @@ _legado/data/
 data/viv_memoria.json
 data/screen.png
 .superpowers/
+data/viv_config.json
+data/viv_erros.jsonl
+data/browser-profile/
+data/browser.png

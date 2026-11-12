@@ -6,9 +6,19 @@ from viv.tools.registry import tool
 
 
 def search(query: str, max_results: int = 5) -> list[dict]:
+    """Busca no DuckDuckGo. Tenta com e sem região; sem resultado devolve lista vazia em vez de erro."""
     from ddgs import DDGS
-    hits = DDGS(timeout=10).text(query, region="br-pt", max_results=max_results)
-    return [{"title": h.get("title", ""), "url": h.get("href", ""), "body": h.get("body", "")} for h in hits]
+    last = None
+    for options in ({"region": "br-pt"}, {}):
+        try:
+            hits = DDGS(timeout=10).text(query, max_results=max_results, **options)
+            if hits:
+                return [{"title": h.get("title", ""), "url": h.get("href", ""), "body": h.get("body", "")} for h in hits]
+        except Exception as exc:
+            last = exc
+    if last is not None and "no results" not in str(last).lower():
+        raise RuntimeError(f"a pesquisa falhou agora ({str(last)[:120]}); tente de novo em instantes")
+    return []
 
 
 @tool("web_search", "Pesquisar na web. Mostra na tela um painel com o resumo de cada fonte. Use sempre que a resposta "
@@ -16,7 +26,7 @@ def search(query: str, max_results: int = 5) -> list[dict]:
       "o usuário pedir para pesquisar, procurar ou mostrar algo; use 0 para uma consulta rápida.",
       {"query": {"type": "string"},
        "abrir_guias": {"type": "integer", "description": "quantas fontes abrir no navegador (0 a 3)", "required": False}},
-      card=False)
+      card=False, title="Pesquisa na web")
 def web_search(query, abrir_guias=0, ctx=None):
     hits = search(query)
     if not hits:

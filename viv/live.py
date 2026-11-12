@@ -19,6 +19,7 @@ from typing import Callable
 from google.genai import types
 
 from viv.bus import BUS
+from viv.errors import ERRORS
 from viv.persona import system_instruction
 from viv.tools import registry
 
@@ -154,6 +155,7 @@ class Viv:
                 raise
             except Exception as exc:
                 kind = classify(exc)
+                ERRORS.record("conexão Gemini", f"{type(exc).__name__}: {exc}")
                 if self.clock() - started >= 10:
                     failures = 0
                 failures += 1

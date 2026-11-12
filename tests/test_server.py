@@ -48,6 +48,46 @@ def env():
         yield client, viv, gate
 
 
+@pytest.fixture
+def configured(tmp_path):
+    from viv.settings import Settings
+    settings = Settings(str(tmp_path / "cfg.json"), {})
+    app = create_app(FakeViv(), FakeGate(), FakeAudio(), CFG, FakeSpeaker(), settings)
+    with TestClient(app) as client:
+        yield client, settings
+
+
+def test_settings_are_listed_and_saved(configured):
+    client, settings = configured
+    keys = [item["key"] for item in client.get("/api/settings").json()["items"]]
+    assert "usuario.nome" in keys and "inicio.com_windows" in keys
+    assert client.post("/api/settings", headers=ORIGIN, json={"key": "usuario.nome", "value": "João"}).json()["value"] == "João"
+    assert settings.get("usuario.nome") == "João"
+
+
+def test_settings_reject_bad_values_and_foreign_origins(configured):
+    client, settings = configured
+    assert client.post("/api/settings", headers=ORIGIN, json={"key": "audio.fones", "value": "talvez"}).status_code == 400
+    assert client.post("/api/settings", headers=ORIGIN, json={"key": "nao.existe", "value": "x"}).status_code == 400
+    assert client.post("/api/settings", headers={"Origin": "https://mal.example"}, json={"key": "usuario.nome", "value": "x"}).status_code == 403
+    assert client.post("/api/routine", json={"hora": "7:00", "texto": "x"}).status_code == 403
+    assert settings.get("usuario.nome") == ""
+
+
+def test_routine_can_be_added_and_removed(configured):
+    client, settings = configured
+    rows = client.post("/api/routine", headers=ORIGIN, json={"hora": "07:30", "texto": "Academia", "dias": "uteis"}).json()["rotina"]
+    assert rows[0]["hora"] == "07:30" and rows[0]["dias_texto"] == "dias úteis"
+    assert client.post("/api/routine", headers=ORIGIN, json={"hora": "99", "texto": "x"}).status_code == 400
+    assert client.request("DELETE", "/api/routine/" + rows[0]["id"], headers=ORIGIN).json()["rotina"] == []
+    assert settings.routine() == []
+
+
+def test_settings_endpoint_absent_without_settings(env):
+    client, _, _ = env
+    assert client.get("/api/settings").status_code == 404
+
+
 def test_status_reports_state_mic_model_pending_and_enrollment(env):
     client, viv, gate = env
     gate.pending = {"name": "fs_delete", "args": {"path": "x"}, "expires": 0}

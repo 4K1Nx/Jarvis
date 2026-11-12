@@ -19,13 +19,17 @@ def site():
         port = s.getsockname()[1]
     viv, gate = FakeViv(), FakeGate()
     cfg = {"server": {"host": "127.0.0.1", "port": port}, "live": {"model": "m"}, "tools": {"vision": {}}}
-    server = uvicorn.Server(uvicorn.Config(create_app(viv, gate, FakeAudio(), cfg, FakeSpeaker()),
+    import tempfile
+    from viv.settings import Settings
+    settings = Settings(tempfile.mkdtemp() + "/cfg.json", {})
+    server = uvicorn.Server(uvicorn.Config(create_app(viv, gate, FakeAudio(), cfg, FakeSpeaker(), settings),
                                            host="127.0.0.1", port=port, log_level="error"))
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(200):
         if server.started:
             break
         time.sleep(0.02)
+    viv.settings = settings
     yield f"http://127.0.0.1:{port}", viv, gate
     server.should_exit = True
 
@@ -194,3 +198,66 @@ def test_narrow_viewport_has_no_horizontal_scroll(page):
     page.wait_for_timeout(500)
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     assert page.locator(".card.toast:not(.out)").count() == 3
+
+
+def test_settings_drawer_opens_edits_and_closes(site, page):
+    _, viv, _ = site
+    page.click("#gear")
+    page.wait_for_selector("#settings.open .setting")
+    assert page.locator("#settings .setting").count() >= 10
+    name = page.locator('#settings input[data-key="usuario.nome"]')
+    name.fill("João"); name.press("Tab")
+    for _ in range(100):
+        if viv.settings.get("usuario.nome") == "João":
+            break
+        page.wait_for_timeout(20)
+    assert viv.settings.get("usuario.nome") == "João"
+    page.locator('#settings input[data-key="audio.fones"]').check()
+    page.wait_for_timeout(300)
+    assert viv.settings.get("audio.fones") is True
+    page.fill("#routine-time", "07:30"); page.fill("#routine-text", "Academia"); page.click("#routine-form button")
+    page.wait_for_selector(".routine-row")
+    assert "Academia" in page.inner_text("#routine-list") and viv.settings.routine()[0]["hora"] == "07:30"
+    page.click(".routine-remove")
+    page.wait_for_selector(".routine-empty")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    assert not page.is_visible("#settings") and page.errors == []
+
+
+def test_invalid_setting_shows_error_message(page):
+    page.click("#gear")
+    page.wait_for_selector("#settings.open .setting")
+    field = page.locator('#settings input[data-key="conversa.segundos_ate_dormir"]')
+    field.fill("3"); field.press("Tab")
+    page.wait_for_selector("#settings-msg.bad")
+    assert "entre 15 e 600" in page.inner_text("#settings-msg")
+
+
+def test_panels_and_toasts_open_with_animation(page):
+    emit(page, channel="card", text="Lista", kind="content", format="lista", body="a\nb\nc", ok=True)
+    emit(page, channel="card", text="Ação", kind="action", body="ok", ok=True)
+    page.wait_for_selector(".card.panel.in"); page.wait_for_selector(".card.toast.in")
+    assert page.evaluate("getComputedStyle(document.querySelector('.card.panel.in')).animationName") == "panel-in"
+    assert page.evaluate("getComputedStyle(document.querySelector('.card.toast.in')).animationName") == "toast-in"
+    assert page.evaluate("getComputedStyle(document.querySelector('.card.panel.in li')).animationName") == "reveal"
+    page.wait_for_timeout(1300)
+    assert page.evaluate("getComputedStyle(document.querySelector('.card.panel.in')).opacity") == "1"
+    page.click(".panel-close")
+    assert page.evaluate("getComputedStyle(document.querySelector('.card.panel.out')).animationName") == "panel-out"
+
+
+def test_reduced_motion_disables_card_animations(site, browser):
+    url, _, _ = site
+    context = browser.new_context(reduced_motion="reduce", viewport={"width": 1280, "height": 800})
+    p = context.new_page(); p.goto(url); p.wait_for_function("window.VivHUD")
+    p.evaluate("e => window.VivHUD.handle(e)", {"channel": "card", "text": "Lista", "kind": "content", "body": "a", "ok": True})
+    p.wait_for_selector(".card.panel.in")
+    assert p.evaluate("getComputedStyle(document.querySelector('.card.panel.in')).animationName") == "none"
+    assert p.evaluate("getComputedStyle(document.querySelector('.card.panel.in')).opacity") == "1"
+    context.close()
+
+
+def test_confirm_without_voice_enrollment_tells_user_to_click(page):
+    emit(page, channel="confirm", text="Limpar o PC", name="system_limpeza", args={}, seconds=30, voice=False)
+    assert "Clique em Sim" in page.inner_text(".confirm") and "Limpar o PC" in page.inner_text(".confirm")

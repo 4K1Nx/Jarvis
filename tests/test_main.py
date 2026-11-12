@@ -15,6 +15,7 @@ def cfg(tmp_path):
     c["audit"]["path"] = str(tmp_path / "audit.jsonl")
     c["speaker_id"]["voiceprint_path"] = str(tmp_path / "voz.json")
     c["wake"]["name_enabled"] = False
+    c["settings"] = {"path": str(tmp_path / "viv_config.json")}
     return c
 
 

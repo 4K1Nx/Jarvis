@@ -47,7 +47,7 @@
       const data = await (await fetch('/api/status')).json();
       setState(data.state);
       $('mic').textContent = data.mic || '';
-      if (data.pending) window.VivCards.confirm({ text: data.pending.name, seconds: 30 });
+      if (data.pending) window.VivCards.confirm({ text: data.pending.text, voice: data.pending.voice, seconds: 30 });
     } catch (error) { /* o WebSocket cuida de reconectar */ }
   }
 

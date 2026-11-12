@@ -146,7 +146,8 @@ def diagnostico(ctx=None):
 
 
 @tool("system_limpeza", "Limpar o PC: apaga arquivos temporários e caches com mais de um dia, esvazia a lixeira e "
-      "limpa o cache de DNS. Exige confirmação do usuário.", {}, dangerous=True, card=False)
+      "limpa o cache de DNS. Exige confirmação do usuário.", {}, dangerous=True, card=False,
+      confirm=lambda args: "Limpar o PC: temporários, caches de navegador, lixeira e DNS")
 def limpeza(ctx=None):
     rows, freed, files = ["Local | Liberado"], 0, 0
     for label, path in cleanup_targets():

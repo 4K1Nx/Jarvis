@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 
 
-def create_app(viv, gate, audio, cfg: dict, speaker=None) -> FastAPI:
+def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None) -> FastAPI:
     app = FastAPI(title="Viv", docs_url=None, redoc_url=None, openapi_url=None)
     port = cfg.get("server", {}).get("port", 8765)
     allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
@@ -37,7 +37,8 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None) -> FastAPI:
             "mic": audio.input_name,
             "model": cfg.get("live", {}).get("model", ""),
             "enrolled": bool(speaker is not None and speaker.enrolled),
-            "pending": {"name": pending["name"], "args": pending["args"]} if pending else None,
+            "pending": {"name": pending["name"], "text": pending.get("text") or pending["name"],
+                        "voice": bool(pending.get("voice"))} if pending else None,
         }
 
     @app.post("/api/wake")
@@ -59,6 +60,52 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None) -> FastAPI:
             raise HTTPException(400, "use sim ou nao")
         await asyncio.to_thread(gate.on_click, decision == "sim")   # a ferramenta pode demorar
         return {"ok": True}
+
+    def routine_rows():
+        from viv.settings import days_label
+        return [{**item, "dias_texto": days_label(item["dias"])} for item in settings.routine()]
+
+    @app.get("/api/settings")
+    def settings_get():
+        if settings is None:
+            raise HTTPException(404, "configurações indisponíveis")
+        return {"items": settings.items(), "rotina": routine_rows()}
+
+    @app.post("/api/settings")
+    async def settings_set(request: Request):
+        same_origin(request)
+        if settings is None:
+            raise HTTPException(404, "configurações indisponíveis")
+        body = await request.json()
+        try:
+            value = await asyncio.to_thread(settings.set, str(body.get("key", "")), body.get("value"))
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise HTTPException(400, str(exc).strip("'\"")) from None
+        return {"ok": True, "value": value}
+
+    @app.post("/api/routine")
+    async def routine_add(request: Request):
+        same_origin(request)
+        if settings is None:
+            raise HTTPException(404, "configurações indisponíveis")
+        body = await request.json()
+        try:
+            settings.add_routine(body.get("hora", ""), body.get("texto", ""), body.get("dias") or "todos")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"ok": True, "rotina": routine_rows()}
+
+    @app.delete("/api/routine/{item_id}")
+    def routine_delete(item_id: str, request: Request):
+        same_origin(request)
+        if settings is None:
+            raise HTTPException(404, "configurações indisponíveis")
+        with settings._lock:
+            before = len(settings._routine)
+            settings._routine = [r for r in settings._routine if r["id"] != item_id]
+            if len(settings._routine) != before:
+                settings._save()
+        return {"ok": True, "rotina": routine_rows()}
 
     @app.get("/api/screen")
     def screen():

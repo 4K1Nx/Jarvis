@@ -11,17 +11,6 @@ def _gui():
     return pyautogui
 
 
-@tool("desktop_launch_app", "Abrir um aplicativo do Windows pelo nome ou executável (ex.: notepad, chrome, calc, spotify).",
-      {"app": {"type": "string", "description": "nome ou executável"}}, title="Abrindo aplicativo")
-def launch_app(app, ctx=None):
-    try:
-        os.startfile(app)
-    except OSError:
-        # nomes que não são executáveis no PATH: o shell do Windows resolve (App Paths, protocolos)
-        subprocess.Popen(["cmd", "/c", "start", "", app])
-    return f"{app} aberto"
-
-
 @tool("desktop_type_text", "Digitar um texto na janela em foco.", {"text": {"type": "string"}}, title="Digitando")
 def type_text(text, ctx=None):
     import keyboard

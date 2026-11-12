@@ -15,7 +15,24 @@ O cérebro é a Gemini Live API (áudio nativo). O áudio do microfone e as capt
 3. Fale normalmente. Para interromper, fale por cima dela.
 4. Ela dorme sozinha depois de 60 segundos de silêncio, quando você se despede, ou com `Ctrl+Alt+V` de novo.
 
-Exemplos de pedidos: "abre o Spotify", "aumenta o volume para 60", "o que tem na minha tela?", "pesquisa a previsão do tempo para amanhã", "me lembra de tomar água em vinte minutos", "mostra os arquivos mais recentes dos Downloads".
+Exemplos de pedidos:
+
+- "abre o WhatsApp", "abre a Steam", "quais aplicativos eu tenho?"
+- "como está o tempo em Vila Velha?" (abre o painel de clima)
+- "pesquisa sobre placas de vídeo" (painel com as fontes e guias no navegador)
+- "otimiza meu PC", "limpa os arquivos temporários" (diagnóstico e limpeza)
+- "aumenta o volume para 60", "o que tem na minha tela?"
+- "me lembra de tomar água em vinte minutos"
+
+### A tela
+
+- **Painel à esquerda:** a informação que você pediu (clima, pesquisa, listas, tabelas, diagnóstico). Fica até você fechar no ×, pedir outra coisa ou passar pouco mais de um minuto.
+- **Avisos à direita:** cada ação executada. Somem sozinhos.
+- **Cartão central:** confirmação de ação perigosa.
+
+### Limpeza do PC
+
+"Otimiza meu PC" mostra o diagnóstico: disco, memória, processos pesados, espaço recuperável e o que inicia com o Windows. A limpeza apaga arquivos temporários e caches de navegador com mais de um dia, esvazia a lixeira e limpa o cache de DNS. Ela sempre pede confirmação. Arquivos em uso são ignorados.
 
 ## Instalação
 
@@ -48,6 +65,7 @@ Ações comuns rodam direto. Estas pedem confirmação antes de executar:
 | Desligar, reiniciar, suspender, bloquear | `system_power` |
 | Encerrar um aplicativo | `system_kill` |
 | Apagar arquivo ou pasta | `fs_delete` |
+| Limpar temporários, caches e lixeira | `system_limpeza` |
 | Gravar por cima, mover, acrescentar ou substituir texto | `fs_write`, `files_move`, `files_append_text`, `files_replace_text` |
 | Rodar comando no shell | `desktop_run_command` |
 

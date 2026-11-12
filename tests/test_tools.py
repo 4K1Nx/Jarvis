@@ -6,14 +6,14 @@ from viv.tools.registry import Context
 
 CFG = {"safety": {"dangerous": []}, "tools": {"vision": {"screenshot_path": "data/screen.png"}}}
 EXPECTED = {
-    "desktop_launch_app", "desktop_type_text", "desktop_hotkey", "desktop_click", "desktop_screenshot",
+    "desktop_launch_app", "desktop_list_apps", "desktop_type_text", "desktop_hotkey", "desktop_click", "desktop_screenshot",
     "desktop_run_command",
     "system_volume", "system_status", "system_processes", "system_power", "system_cancel_shutdown", "system_kill",
     "files_find", "files_open", "files_recent", "files_read_text", "files_create_text", "files_append_text",
     "files_replace_text", "files_move", "fs_list", "fs_read", "fs_write", "fs_delete",
     "browser_open", "browser_search", "browser_extract", "browser_click", "browser_type", "browser_press",
     "browser_new_tab", "browser_tabs", "browser_screenshot",
-    "web_search", "web_open", "vision_analyze_screen", "hud_mostrar",
+    "web_search", "web_open", "web_clima", "system_diagnostico", "system_limpeza", "vision_analyze_screen", "hud_mostrar",
 }
 ASSISTANT = {"memory_lembrar", "memory_esquecer", "reminder_set", "reminder_list"}
 

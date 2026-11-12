@@ -8,7 +8,7 @@ from typing import Any
 from viv.bus import BUS
 
 _REG: dict[str, dict] = {}
-_MODULES = ("desktop", "system", "files", "browser", "web", "vision", "hud", "assistant")
+_MODULES = ("desktop", "apps", "system", "optimize", "files", "browser", "web", "weather", "vision", "hud", "assistant")
 
 
 @dataclass

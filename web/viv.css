@@ -47,13 +47,47 @@ body[data-state="error"] .dot { background: var(--viv-danger); box-shadow: 0 0 1
 /* ---- cartões ---- */
 #cards { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 .card {
-  position: absolute; width: min(320px, 26vw); pointer-events: auto;
+  position: absolute; pointer-events: auto; display: flex; flex-direction: column;
   background: var(--viv-panel); border: 1px solid var(--viv-line); border-radius: 14px;
   padding: 12px 14px 13px; backdrop-filter: blur(10px);
   box-shadow: 0 10px 40px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .03);
   opacity: 0; transform: translateX(var(--from, 24px)) scale(.97);
   transition: opacity .35s ease, transform .45s cubic-bezier(.2, .9, .25, 1), top .4s ease;
 }
+.card.toast { right: 3.2vw; width: min(300px, 24vw); --from: 28px; overflow: hidden; }
+.card.panel {
+  left: 3.2vw; top: 84px; width: min(440px, 31vw); max-height: calc(100vh - 300px); --from: -28px;
+  padding: 16px 18px 18px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--viv-line) transparent;
+  box-shadow: 0 14px 60px rgba(0, 0, 0, .55), 0 0 44px rgba(155, 107, 255, .16);
+}
+.card.panel .card-title { font-size: 15.5px; }
+.card.panel .card-body { font-size: 13.5px; max-height: none; color: var(--viv-ink); }
+.card.panel ul { font-size: 13.5px; max-height: none; columns: 2; column-gap: 22px; }
+.card.panel li { break-inside: avoid; }
+.card.panel table { font-size: 13px; }
+.panel-close { margin-left: auto; flex: none; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font: inherit; font-size: 17px;
+  line-height: 1; color: var(--viv-dim); background: transparent; border: 1px solid transparent; }
+.panel-close:hover, .panel-close:focus-visible { color: var(--viv-ink); border-color: var(--viv-line); outline: none; }
+.results { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.result { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: baseline; }
+.result-title { color: var(--viv-cyan); font-size: 13.5px; font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.result-title:hover, .result-title:focus-visible { text-decoration: underline; }
+.result-host { font-size: 11px; color: var(--viv-dim); white-space: nowrap; }
+.result-body { grid-column: 1 / -1; margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--viv-dim); overflow-wrap: anywhere; }
+.weather-now { display: flex; align-items: center; gap: 18px; margin: 4px 0 14px; }
+.weather-temp { font-size: 64px; font-weight: 200; line-height: 1; letter-spacing: -.03em;
+  background: linear-gradient(180deg, #fff, var(--viv-rose)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.weather-side { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--viv-dim); }
+.weather-side strong { font-size: 16px; font-weight: 600; color: var(--viv-ink); }
+.weather-stats, .weather-days { display: grid; gap: 8px; }
+.weather-stats { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
+.weather-days { grid-template-columns: repeat(4, 1fr); }
+.weather-stat, .weather-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 9px 4px; border-radius: 10px;
+  background: rgba(155, 107, 255, .09); border: 1px solid rgba(155, 107, 255, .16); font-size: 11.5px; color: var(--viv-dim); }
+.weather-stat b { font-size: 15px; font-weight: 600; color: var(--viv-ink); }
+.weather-day b { font-size: 15px; color: var(--viv-ink); }
+.weather-day-label { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; color: var(--viv-cyan); }
+.weather-day-rain { color: var(--viv-cyan); }
 .card.in { opacity: 1; transform: none; }
 .card.out { opacity: 0; transform: translateX(var(--from, 24px)) scale(.97); }
 .card::before {
@@ -79,6 +113,7 @@ body[data-state="error"] .dot { background: var(--viv-danger); box-shadow: 0 0 1
 .card[data-kind="vision"] { --accent: var(--viv-rose); }
 .card[data-kind="data"] { --accent: var(--viv-cyan); }
 .card[data-kind="content"] { --accent: var(--viv-rose); }
+.card[data-kind="weather"] { --accent: var(--viv-rose); }
 .card[data-ok="false"] { --accent: var(--viv-danger); border-color: rgba(255, 77, 94, .5); }
 
 /* ---- confirmação ---- */
@@ -121,7 +156,8 @@ body:not([data-state="sleeping"]) .hint { visibility: hidden; }
   .brand-sub, #mic { display: none; }
   #links { display: none; }
   #cards { inset: 64px 12px auto 12px; display: flex; flex-direction: column; gap: 8px; }
-  .card { position: static; width: 100%; --from: 0px; }
+  .card.toast, .card.panel { position: static; width: 100%; max-height: 42vh; --from: 0px; }
+  .card.panel ul { columns: 1; }
   .caption-viv { font-size: 16px; }
   #confirm-slot { bottom: 170px; }
 }

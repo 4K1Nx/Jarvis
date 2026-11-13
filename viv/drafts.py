@@ -6,6 +6,7 @@ qualquer um dos dois cria outro rascunho e exige nova confirmação. O estado do
 é guardado para que uma falha de resultado incerto nunca vire mensagem duplicada.
 """
 import threading
+import time
 import unicodedata
 
 
@@ -28,7 +29,7 @@ class Drafts:
         with self._lock:
             same = self.current is not None and _key(self.current["contato"], self.current["texto"]) == _key(contact, text)
             if not same:
-                self.current = {"contato": contact, "texto": text, "estado": "rascunho"}
+                self.current = {"contato": contact, "texto": text, "estado": "rascunho", "at": time.monotonic()}
             return dict(self.current)
 
     def match(self, contact: str, text: str) -> dict | None:
@@ -37,6 +38,11 @@ class Drafts:
             if self.current is not None and _key(self.current["contato"], self.current["texto"]) == _key(contact, text):
                 return self.current
             return None
+
+    def shown_at(self, contact: str, text: str) -> float | None:
+        """Quando este rascunho apareceu na tela (relógio monotônico), ou None se não é o atual."""
+        draft = self.match(contact, text)
+        return None if draft is None else draft.get("at")
 
     def mark(self, contact: str, text: str, state: str) -> None:
         draft = self.match(contact, text)

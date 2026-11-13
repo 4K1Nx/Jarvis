@@ -73,6 +73,7 @@ class AudioIO:
         self._recent: deque = deque(maxlen=RECENT_FRAMES)
         self._speech: deque = deque(maxlen=SPEECH_FRAMES)
         self._out = bytearray()
+        self._queued = self._played = 0        # bytes já enfileirados e já tocados, desde o início
         self._out_lock = threading.Lock()
         self._last_out = float("-inf")
         self._loud = 0                         # quadros fortes seguidos enquanto a Viv fala
@@ -136,6 +137,7 @@ class AudioIO:
         with self._out_lock:
             chunk = bytes(self._out[:need])
             del self._out[:need]
+            self._played += len(chunk)
         if chunk:
             self._last_out = self._clock()
         outdata[:len(chunk)] = chunk
@@ -158,10 +160,17 @@ class AudioIO:
     def play(self, pcm: bytes) -> None:
         with self._out_lock:
             self._out += pcm
+            self._queued += len(pcm)
 
     def flush(self) -> None:
         with self._out_lock:
+            self._queued -= len(self._out)
             self._out.clear()
+
+    def position(self) -> tuple[int, int]:
+        """(bytes enfileirados, bytes tocados) desde o início. A diferença é o que ainda vai tocar."""
+        with self._out_lock:
+            return self._queued, self._played
 
     def is_playing(self) -> bool:
         with self._out_lock:

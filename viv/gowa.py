@@ -19,7 +19,9 @@ import io
 import json
 import os
 import secrets
+import re
 import socket
+import sqlite3
 import subprocess
 import threading
 import time
@@ -45,6 +47,8 @@ class GowaError(RuntimeError):
 
 class Uncertain(GowaError):
     """O pedido pode ter sido executado: não dá para afirmar nem que foi, nem que não foi."""
+
+JID = re.compile(r"[0-9A-Za-z.:_-]{3,40}@(s\.whatsapp\.net|g\.us|lid)")
 
 
 def free_port() -> int:
@@ -78,8 +82,23 @@ def describe(message: dict) -> str:
     return (f"{label}: {text}" if label and text else label or text)[:160]
 
 
+def phone(jid: str) -> str:
+    """'555181424207@s.whatsapp.net' -> '+55 51 8142-4207'."""
+    digits = jid.split("@", 1)[0].split(":", 1)[0]
+    if not digits.isdigit():
+        return ""
+    if digits.startswith("55") and len(digits) in (12, 13):
+        local = digits[4:]
+        return f"+55 {digits[2:4]} {local[:-4]}-{local[-4:]}"
+    return "+" + digits
+
+
 def jid_name(jid: str) -> str:
-    return "+" + jid.split("@", 1)[0] if jid.endswith("@s.whatsapp.net") else jid.split("@", 1)[0]
+    return phone(jid) or jid.split("@", 1)[0]
+
+
+def looks_like_number(name: str) -> bool:
+    return bool(name) and sum(c.isdigit() for c in name) >= max(8, len(name) - 4)
 
 
 def decode_pcm(raw: bytes, rate: int = 24000) -> bytes:
@@ -107,7 +126,7 @@ def thumbnail(raw: bytes, size: int = 480) -> str:
 
 
 class Gowa:
-    def __init__(self, cfg: dict, viv_port: int, on_message: Callable[[str, str], None] | None = None,
+    def __init__(self, cfg: dict, viv_port: int, on_message: Callable[[str, str, str], None] | None = None,
                  client: httpx.Client | None = None, port: int | None = None, clock: Callable[[], float] = time.time):
         w = cfg.get("whatsapp", {})
         self.exe = Path(w.get("gowa_path", "bin/gowa/windows-amd64.exe"))
@@ -122,6 +141,8 @@ class Gowa:
         self.failed = False
         self._ready = threading.Event()
         self._avatars: dict[str, str] = {}
+        self._groups: dict[str, str] = {}
+        self._index: tuple[float, tuple] | None = None
         self._watching = threading.Event()
 
     # ---- processo -------------------------------------------------------------------
@@ -331,37 +352,134 @@ class Gowa:
                 self._avatars[jid] = ""
         return self._avatars[jid]
 
+    def local_index(self) -> tuple[set, set, dict, dict]:
+        """(arquivadas, silenciadas, nomes dos contatos, LID -> telefone), lidos da base do próprio
+        WhatsApp no computador, só para leitura. A API do GoWA 9.6 não informa arquivamento nem
+        silêncio (o campo "archived" de /chats vem sempre falso). Se a base mudar numa versão
+        futura, nada é filtrado e os nomes caem para o telefone. Atualiza a cada minuto."""
+        now = self.clock()
+        if self._index is not None and now - self._index[0] < 60:
+            return self._index[1]
+        archived, muted, names, lids = set(), set(), {}, {}
+        database = (self.folder / "storages" / "whatsapp.db").resolve()
+        if database.is_file():
+            try:
+                connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True, timeout=2)
+                try:
+                    for jid, until, archived_flag in connection.execute(
+                            "select chat_jid, muted_until, archived from whatsmeow_chat_settings"):
+                        if archived_flag:
+                            archived.add(str(jid))
+                        if until and (int(until) < 0 or int(until) > now):
+                            muted.add(str(jid))
+                    lids = {str(lid).split("@")[0]: str(pn).split("@")[0]
+                            for lid, pn in connection.execute("select lid, pn from whatsmeow_lid_map")}
+                    for jid, first, full, push in connection.execute(
+                            "select their_jid, first_name, full_name, push_name from whatsmeow_contacts"):
+                        name = str(full or first or push or "").strip()
+                        if name:
+                            names[str(jid).split("@")[0]] = name
+                finally:
+                    connection.close()
+            except (sqlite3.Error, ValueError, TypeError):
+                pass
+        value = (archived, muted, names, lids)
+        self._index = (now, value)
+        return value
+
+    def canonical(self, jid: str) -> str:
+        """O mesmo contato pode chegar como telefone ou como LID: devolve sempre o telefone."""
+        jid = str(jid or "")
+        user = jid.split("@", 1)[0].split(":", 1)[0]
+        if jid.endswith("@lid"):
+            _, _, _, lids = self.local_index()
+            return f"{lids[user]}@s.whatsapp.net" if user in lids else jid
+        return f"{user}@s.whatsapp.net" if jid.endswith("@s.whatsapp.net") else jid
+
+    def person(self, jid: str) -> str:
+        """Nome de quem tem este JID: o salvo nos contatos, senão o telefone formatado."""
+        _, _, names, lids = self.local_index()
+        user = jid.split("@", 1)[0].split(":", 1)[0]
+        if jid.endswith("@lid"):
+            user = lids.get(user, user)
+        return names.get(user) or phone(user + "@s.whatsapp.net") or "Alguém"
+
+    def author(self, message: dict) -> str:
+        """Quem mandou: “Você”, ou o nome (em grupos, o de quem escreveu, não o do grupo)."""
+        if message.get("is_from_me"):
+            return "Você"
+        name = str(message.get("sender_display_name") or "").strip()
+        if name and not looks_like_number(name):
+            return name
+        return self.person(str(message.get("sender_jid") or "")) if message.get("sender_jid") else (name or "Alguém")
+
+    def group_name(self, jid: str, stored: str) -> str:
+        """Nome do grupo. O GoWA guarda “Group <número>” quando não sabe: pergunta ao WhatsApp uma vez."""
+        if stored and not stored.startswith("Group ") and not looks_like_number(stored):
+            return stored
+        if jid not in self._groups:
+            try:
+                info = self._call("GET", "/group/info", params={"group_id": jid}, timeout=8) or {}
+                name = next((str(info[key]).strip() for key in ("Name", "name", "Subject", "subject") if info.get(key)), "")
+            except GowaError:
+                name = ""
+            self._groups[jid] = name or "Grupo sem nome"
+        return self._groups[jid]
+
     def chat_list(self, limit: int = 15) -> list[dict]:
         """Conversas recentes no formato da lista da HUD. 'unread' conta as mensagens seguidas da
         outra pessoa no fim da conversa, quando a última chegou há menos de PENDING_HOURS."""
-        result = self._call("GET", "/chats", params={"limit": 40}) or {}
+        archived, muted, _, _ = self.local_index()
+        result = self._call("GET", "/chats", params={"limit": 60}) or {}
         chats = [c for c in result.get("data") or [] if isinstance(c, dict) and c.get("jid")
-                 and c["jid"] not in SKIP_CHATS and not str(c["jid"]).endswith("@newsletter")]
+                 and c["jid"] not in SKIP_CHATS and not str(c["jid"]).endswith("@newsletter")
+                 and str(c["jid"]) not in archived and not c.get("archived")]
         chats.sort(key=lambda c: str(c.get("last_message_time") or ""), reverse=True)
         rows, now = [], self.clock()
         for chat in chats[:limit]:
             jid = str(chat["jid"])
+            group = jid.endswith("@g.us")
             recent = self.messages(jid, 10)
-            pending = 0
-            if recent and age_hours(recent[-1].get("timestamp"), now) <= PENDING_HOURS:
+            last = recent[-1] if recent else None
+            mine = bool(last and last.get("is_from_me"))
+            pending = []
+            silenced = jid in muted                  # conversa silenciada no celular nunca fica pendente
+            if last and not silenced and age_hours(last.get("timestamp"), now) <= PENDING_HOURS:
                 for message in reversed(recent):
                     if message.get("is_from_me"):
                         break
-                    pending += 1
-            rows.append({"name": str(chat.get("name") or "").strip() or jid_name(jid), "jid": jid,
-                         "last": describe(recent[-1]) if recent else "", "unread": pending,
-                         "photo": "" if jid.endswith("@g.us") else self.avatar(jid)})
+                    pending.insert(0, message)
+            preview = describe(last) if last else ""
+            if preview and (mine or group):          # quem mandou a última: você, ou quem do grupo
+                preview = f"{self.author(last)}: {preview}"
+            stored = str(chat.get("name") or "").strip()
+            name = self.group_name(jid, stored) if group else (stored if stored and not looks_like_number(stored)
+                                                               else self.person(jid))
+            rows.append({"name": name, "jid": jid, "group": group, "muted": silenced,
+                         "mine": mine, "last": preview, "unread": len(pending),
+                         "novas": [{"autor": self.author(m) if group else "", "texto": describe(m),
+                                    "hora": hhmm(m.get("timestamp"))} for m in pending[-3:]],
+                         "photo": "" if group else self.avatar(jid)})
         return rows
 
     def resolve(self, contact: str) -> tuple[str, str]:
         """Nome e JID da conversa de um contato. Aceita o nome como está salvo ou um telefone."""
         from viv.tools.whatsapp import pick_chat
         wanted = " ".join(str(contact).split())
+        if JID.fullmatch(wanted):                          # conversa já identificada (clique numa notificação)
+            return (self.group_name(wanted, "") if wanted.endswith("@g.us") else self.person(wanted)), wanted
         digits = "".join(c for c in wanted if c.isdigit())
         if digits and len(digits) >= 10 and len(digits) >= len(wanted.replace(" ", "")) - 4:
             return wanted, (digits if len(digits) > 11 else "55" + digits) + "@s.whatsapp.net"
         found = (self._call("GET", "/chats", params={"search": wanted, "limit": 20}) or {}).get("data") or []
-        names = {str(c.get("name") or "").strip(): str(c["jid"]) for c in found if isinstance(c, dict) and c.get("jid")}
+        names = {}
+        for chat in found:
+            if isinstance(chat, dict) and chat.get("jid"):
+                jid = str(chat["jid"])
+                stored = str(chat.get("name") or "").strip()
+                names[self.group_name(jid, stored) if jid.endswith("@g.us") else stored] = jid
+        if pick_chat(list(names), wanted) is None:      # o nome do grupo que a Viv mostra pode não estar na busca
+            names.update({name: jid for jid, name in self._groups.items()})
         chosen = pick_chat(list(names), wanted)
         if chosen is None:
             contacts = (self._call("GET", "/user/my/contacts") or {}).get("data") or []
@@ -386,7 +504,8 @@ class Gowa:
         for message in self.messages(jid, limit):
             kind = str(message.get("media_type") or "").lower()
             rows.append({"id": str(message.get("id") or ""), "out": bool(message.get("is_from_me")), "meta": "",
-                         "time": hhmm(message.get("timestamp")), "author": str(message.get("sender_display_name") or ""),
+                         "group": jid.endswith("@g.us"), "jid": jid,
+                         "time": hhmm(message.get("timestamp")), "author": self.author(message),
                          "text": str(message.get("content") or ""), "audio": kind in ("audio", "ptt", "voice"),
                          "kind": kind, "image": ""})
         budget = images
@@ -420,12 +539,23 @@ class Gowa:
         if not isinstance(payload, dict) or event.get("event") != "message":
             return True
         chat = str(payload.get("chat_id") or "")
-        if not chat or payload.get("is_from_me") or chat.endswith("@g.us") or chat in SKIP_CHATS:
+        # só conversas com uma pessoa: grupos, canais (@newsletter), status e listas de transmissão ficam de fora
+        if (not chat or payload.get("is_from_me") or chat in SKIP_CHATS
+                or not (chat.endswith("@s.whatsapp.net") or chat.endswith("@lid"))):
             return True
-        name = str(payload.get("sender_display_name") or payload.get("from_name") or jid_name(chat)).strip()
+        chat = self.canonical(chat)
+        name = str(payload.get("sender_display_name") or payload.get("from_name") or "").strip()
+        if not name or looks_like_number(name):
+            name = self.person(chat)
+        text = payload.get("body") or payload.get("text") or payload.get("message") or ""
+        text = text if isinstance(text, str) else ""
+        kind = next((label for key, label in (("image", "foto"), ("video", "vídeo"), ("audio", "áudio"), ("ptt", "áudio"),
+                                              ("document", "documento"), ("sticker", "figurinha"),
+                                              ("location", "localização"), ("contact", "contato"))
+                     if payload.get(key)), "texto")
         if self.on_message is not None:
             try:
-                self.on_message(chat, name)
+                self.on_message(chat, name, kind, text[:2000])
             except Exception:
                 pass
         return True

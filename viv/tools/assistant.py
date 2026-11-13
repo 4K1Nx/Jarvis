@@ -20,7 +20,7 @@ def esquecer(trecho, ctx=None):
 @tool("reminder_set", "Criar um lembrete que a Viv fala em voz alta depois de um prazo em segundos.",
       {"texto": {"type": "string"}, "segundos": {"type": "number"}}, card=False)
 def reminder_set(texto, segundos, ctx=None):
-    ctx.reminders.schedule_in(float(segundos), texto)
+    ctx.reminders.schedule_in(float(segundos), texto, to=getattr(ctx, "origin", ""))
     when = datetime.fromtimestamp(datetime.now().timestamp() + float(segundos))
     BUS.emit("card", "Lembrete criado", kind="data", body=f"{when:%d/%m %H:%M}: {texto}", ok=True)
     return f"lembrete criado para {when:%H:%M}; a Viv precisa estar aberta para avisar"

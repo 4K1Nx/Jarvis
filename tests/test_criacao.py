@@ -264,3 +264,35 @@ def test_diagnostico_shows_table_and_names_what_needs_attention(tmp_path, cards)
     table = cards[-1][2]
     assert "Conexão com o Gemini" in text and "Cadastro de voz" in text
     assert table["format"] == "tabela" and table["ok"] is False and "Word | ✓ ok" in table["body"]
+
+
+class FakeModels:
+    def __init__(self, behavior):
+        self.behavior, self.asked = behavior, []
+
+    def generate_content(self, model, contents, **extra):
+        self.asked.append(model)
+        outcome = self.behavior.get(model, "404 NOT_FOUND model is no longer available")
+        if isinstance(outcome, str):
+            raise RuntimeError(outcome)
+        return outcome
+
+
+def client_with(behavior):
+    return type("C", (), {"models": FakeModels(behavior)})()
+
+
+def test_overloaded_main_model_falls_back_past_retired_models():
+    ok = type("R", (), {"text": " pronto "})()
+    client = client_with({"principal": "503 UNAVAILABLE high demand", "gemini-3-flash-preview": ok})
+    assert _llm.generate(client, "principal", "oi", sleep=lambda s: None) == "pronto"
+    assert "gemini-2.5-flash" not in client.models.asked, "modelo desligado não é mais tentado"
+
+
+def test_error_reports_the_overload_not_the_last_retired_model():
+    client = client_with({"principal": "503 UNAVAILABLE high demand"})
+    with pytest.raises(RuntimeError, match="sobrecarregado") as error:
+        _llm.generate(client, "principal", "oi", sleep=lambda s: None)
+    assert "503" in str(error.value) and "404" not in str(error.value)
+    with pytest.raises(RuntimeError, match="nenhum modelo"):
+        _llm.generate(client_with({}), "principal", "oi", sleep=lambda s: None)

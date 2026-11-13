@@ -71,7 +71,9 @@ Tarefas que passam de um segundo (pesquisa profunda, programar, criar documentos
 
 ### WhatsApp e pessoas
 
-“Viv, tem mensagem nova?”, “abre a conversa da minha mãe”, “ouve o áudio da Bia em silêncio”, “responde o chefe”. Enviar sempre pede confirmação, e o cartão mostra o nome real do contato e o texto exato.
+“Viv, tem mensagem nova?”, “abre a conversa da minha mãe”, “ouve o áudio da Bia em silêncio”, “responde o chefe”.
+
+Para responder, ela lê a conversa, pergunta se é do seu jeito ou formal e escreve a resposta ela mesma, imitando o tamanho, as gírias e os emojis das suas mensagens para aquela pessoa. Só pergunta o que ela não tem como saber (horário, lugar, valor, compromisso). O rascunho aparece na tela; quando você diz “envia” com a sua voz reconhecida, depois de o rascunho aparecer, ele sai na hora. O “sim” que você deu para outra confirmação nunca envia um rascunho. Sem a voz reconhecida, a tela pede confirmação.
 
 **WhatsApp direto (recomendado).** A Viv conversa com o WhatsApp por um serviço local, o GoWA (o mesmo que o Kardap.IA usa), sem abrir navegador:
 
@@ -83,13 +85,39 @@ O script baixa o GoWA 9.6.0, confere o SHA-256 e instala em `bin/gowa/`. Depois,
 
 - O serviço sobe e fecha junto com a Viv, escuta só neste computador (`127.0.0.1`), com senha nova a cada início. Os dados da sessão ficam em `data/gowa/`.
 - Ler pelo caminho direto não marca nada como lido no celular. Fotos e áudios são baixados só quando ela precisa e apagados logo depois.
-- Mensagens novas aparecem na tela na hora, só com o nome de quem mandou (Configurações > “Avisar mensagens novas do WhatsApp”). Grupos não avisam.
-- “Pendentes” são conversas em que a última mensagem é da outra pessoa e chegou há menos de 48 horas.
+- Mensagem nova: com a Viv dormindo, só aparece a notificação na tela, com o nome de quem mandou e o tipo (texto, foto, áudio); clicar nela abre a conversa. Com ela acordada, ela também avisa falando e pergunta se você quer que leia. Várias mensagens seguidas da mesma conversa geram um aviso só. Grupos, canais e status não avisam. Desliga em Configurações > “Avisar mensagens novas do WhatsApp”.
+- Na conversa aberta, cada áudio tem ▶ (toca nas caixas de som) e “Transcrever” (o texto aparece embaixo do áudio, transcrito no próprio computador). O que ela já ouviu fica transcrito na tela e nas próximas leituras, só na memória do programa.
+- “Pendentes” são conversas em que a última mensagem é da outra pessoa e chegou há menos de 48 horas. Conversa em que você falou por último nunca é pendente, e ela diz que a última mensagem foi sua.
+- Conversas arquivadas no celular não aparecem, e as silenciadas nunca contam como pendentes. Como a API do serviço não informa isso, a Viv lê essas marcas da base local do WhatsApp em `data/gowa/storages/whatsapp.db`, só para leitura.
+- Grupos aparecem com o nome real, e quem escreveu aparece pelo nome salvo nos seus contatos (ou pelo telefone, se não estiver salvo).
+- Em grupos, ela diz quem do grupo escreveu, e a conversa aberta mostra o nome de cada um.
+- Enquanto ela fala das conversas, a tela mostra a conversa de que ela está falando naquele instante, com as mensagens novas; no fim, a lista com todas. Clique numa conversa da lista para abri-la.
+- Ao iniciar com o Windows, as boas-vindas incluem as conversas pendentes.
 - Desligando “WhatsApp direto” em Configurações, ou se o serviço não estiver instalado, ela volta a usar o WhatsApp Web no navegador, com a sessão em `data/browser-profile/`; nesse modo, abrir uma conversa marca como lida.
 
 Conte quem é quem (“a Maria Silva é minha mãe”) e a Viv guarda a pessoa com um apelido ou a relação, em `data/viv_pessoas.json`, e passa a se referir a ela assim. “Viv, quem você conhece?” mostra a lista.
 
 O WhatsApp não oferece API para conta pessoal: os dois caminhos são clientes não oficiais ligados à sua conta, e o WhatsApp não os autoriza formalmente. Se o WhatsApp mudar a página, os seletores do modo navegador ficam no topo de `viv/tools/whatsapp.py`. As mensagens lidas são enviadas ao Gemini para ela resumir; os áudios em silêncio são transcritos no próprio computador.
+
+### A Viv pelo seu WhatsApp: contatos administradores e bloqueio
+
+“Viv, torna a Cris contato administrador” (pede confirmação). A Viv manda na hora, do seu número, uma mensagem para a Cris explicando como usar (e outra avisando quando você tira o acesso); quem mandou `/viv bloquear` não recebe esse aviso. A partir daí, a Cris escreve na conversa com você:
+
+```text
+/viv me lembra de ligar pro dentista às 15h
+/viv pesquisa um japonês bom perto do centro
+/viv ajuda
+/viv                 (sozinho) abre uma conversa: tudo o que ela escrever vai para a Viv
+/viv encerrar        fecha a conversa; meia hora sem mensagens também fecha
+```
+
+A Viv responde do seu número, começando por “Viv:”, e age no seu computador por ela: lembretes (o aviso volta para o WhatsApp dela), pesquisas, programas, arquivos e documentos. Ação perigosa espera a Cris responder `/viv sim` (ou `/viv não`), por até dois minutos. Cada pedido aparece como cartão na sua tela.
+
+O que um administrador não faz: escrever para outras pessoas em seu nome, mudar quem é administrador, mudar os ajustes da Viv ou ver as suas anotações sobre as pessoas (apelidos, presentes, encontros). Ler o seu WhatsApp e o seu e-mail fica desligado; para liberar: “torna a Cris administradora com acesso privado”. “Viv, quem são os contatos administradores?” mostra a lista; “tira o acesso da Cris” desfaz.
+
+Qualquer contato, administrador ou não, pode mandar `/viv bloquear`: a partir daí a Viv não envia mais nada escrito por ela para essa pessoa, nem com o seu pedido, até a própria pessoa mandar `/viv desbloquear`. Você continua escrevendo normalmente pelo celular. `/viv` de quem não é administrador chega como mensagem comum.
+
+Quem é administrador e quem bloqueou fica em `data/viv_remoto.json` (fora do Git); as conversas com a Viv ficam só na memória, por meia hora. Só vale mensagem de conversa individual, que chega pelo serviço local com assinatura. O pedido do administrador vai ao Gemini como os seus.
 
 ### Conversas e planos com pessoas próximas
 
@@ -180,7 +208,7 @@ Com a Viv fechada:
 
 Você lê oito frases de cinco segundos. Só o vetor da voz é salvo, em `data/voiceprint.json`; o áudio não é guardado. Sem cadastro, a confirmação por voz fica desligada e vale só o clique.
 
-A Viv reconhece quem fala a cada turno, usando só a fala (sem silêncio nem a voz dela), e mostra o nome no topo da tela. Um “sim” curto confirma uma ação quando o dono foi reconhecido há pouco na mesma conversa; dizer “sim, pode fazer” é mais confiável. Se uma voz que não é a do dono pedir WhatsApp ou e-mail, ela pede confirmação antes de mostrar.
+A Viv reconhece quem fala a cada turno, usando só a fala (sem silêncio nem a voz dela), e mostra o nome no topo da tela. Quando ela reconhece a sua voz com segurança, as permissões valem por 5 minutos: ler WhatsApp e e-mail não pede confirmação, um “sim” curto confirma, e “envia” manda o rascunho do WhatsApp na hora. Uma fala só um pouco abaixo do limiar (ruído, fone, voz cansada) não derruba essas permissões; outra voz cadastrada, ou uma bem diferente da sua, derruba na hora. Ler WhatsApp e e-mail só pede confirmação quando quem fala é outra pessoa cadastrada (`--pessoa`); voz apenas não reconhecida não trava a leitura. Enviar sem cartão exige a sua voz reconhecida: se o nome no topo da tela nunca aparece, rode `--testar` abaixo.
 
 ```bat
 .venv\Scripts\python.exe scripts\enroll_voice.py --testar         mostra a sua pontuação contra o cadastro

@@ -8,7 +8,7 @@ DAYS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-
 
 
 def collect(settings, reminders, errors, now: datetime | None = None, fetch_weather=None, unread_count=None,
-            disk_path: str = "C:\\") -> dict:
+            disk_path: str = "C:\\", whatsapp: list[dict] | None = None) -> dict:
     """Cada parte é opcional: o que falhar fica de fora, sem impedir as boas-vindas."""
     now = now or datetime.now()
     data = {"hora": f"{now:%H:%M}", "dia": f"{DAYS[now.weekday()]}, {now:%d/%m/%Y}",
@@ -38,6 +38,8 @@ def collect(settings, reminders, errors, now: datetime | None = None, fetch_weat
             data["emails_nao_lidos"] = unread_count()
         except Exception:
             pass
+    if whatsapp is not None:
+        data["whatsapp"] = whatsapp
     return data
 
 
@@ -51,6 +53,8 @@ def panel(data: dict) -> str:
     rows += [f"Lembrete | {item}" for item in data.get("lembretes", [])]
     if "emails_nao_lidos" in data:
         rows.append(f"E-mails não lidos | {data['emails_nao_lidos']}")
+    if "whatsapp" in data:
+        rows.append("WhatsApp pendente | " + (", ".join(f"{c['label']} ({c['unread']})" for c in data["whatsapp"]) or "nada"))
     if "disco_livre_pct" in data:
         rows.append(f"Disco livre | {data['disco_livre_gb']} GB ({data['disco_livre_pct']}%)")
     rows.append(f"Erros nas últimas 24 h | {data.get('erros', 0)}")
@@ -76,6 +80,13 @@ def prompt(data: dict) -> str:
         lines.append("Lembretes pendentes: " + "; ".join(data["lembretes"]) + ".")
     if "emails_nao_lidos" in data:
         lines.append(f"E-mails não lidos: {data['emails_nao_lidos']}.")
+    if data.get("whatsapp"):
+        from viv.tools.whatsapp import listing
+        lines.append("Conversas do WhatsApp esperando resposta do usuário. Diga quem mandou e, em poucas palavras, sobre o "
+                     "quê, uma por uma, pelo apelido; em grupo, diga quem do grupo escreveu. Depois pergunte se ele quer "
+                     "responder alguma:\n" + listing(data["whatsapp"]))
+    elif "whatsapp" in data:
+        lines.append("WhatsApp: nenhuma conversa esperando resposta.")
     if data.get("disco_livre_pct") is not None and data["disco_livre_pct"] < 10:
         lines.append(f"Atenção: o disco está com só {data['disco_livre_pct']}% livre ({data['disco_livre_gb']} GB). Sugira a limpeza.")
     if data.get("erros"):

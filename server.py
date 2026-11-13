@@ -125,6 +125,43 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
             raise HTTPException(404, "sem captura")
         return FileResponse(path, headers={"Cache-Control": "no-store"})
 
+    @app.post("/api/whatsapp/abrir")
+    async def whatsapp_open(request: Request):
+        """Clique numa conversa da lista da HUD: abre essa conversa na tela."""
+        same_origin(request)
+        ctx = getattr(gate, "ctx", None)
+        if ctx is None:
+            raise HTTPException(404, "WhatsApp indisponível")
+        body = await request.json()
+        contato = " ".join(str(body.get("contato") or "").split())[:120] if isinstance(body, dict) else ""
+        if not contato:
+            raise HTTPException(400, "informe a conversa")
+        from viv.tools import registry
+        result = await asyncio.to_thread(registry.call, "whatsapp_abrir", {"contato": contato}, ctx)
+        if result.startswith("erro:"):
+            raise HTTPException(400, result[5:].strip()[:200])
+        return {"ok": True}
+
+    @app.post("/api/whatsapp/audio")
+    async def whatsapp_audio(request: Request):
+        """Clique num áudio da conversa aberta na tela: tocar nas caixas de som ou transcrever."""
+        same_origin(request)
+        ctx = getattr(gate, "ctx", None)
+        if ctx is None:
+            raise HTTPException(404, "WhatsApp indisponível")
+        body = await request.json()
+        if not isinstance(body, dict) or body.get("acao") not in ("tocar", "transcrever"):
+            raise HTTPException(400, "use tocar ou transcrever")
+        from viv.tools import whatsapp
+        try:
+            text = await asyncio.to_thread(whatsapp.audio_action, ctx, str(body.get("jid") or ""),
+                                           str(body.get("id") or ""), body["acao"])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)[:200]) from None
+        except Exception as exc:
+            raise HTTPException(409, str(exc)[:200]) from None
+        return {"ok": True, "transcricao": text}
+
     @app.post("/api/whatsapp/evento")
     async def whatsapp_event(request: Request):
         """Mensagens novas do serviço local do WhatsApp. Sem Origin (não vem do navegador): vale só de

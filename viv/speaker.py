@@ -20,6 +20,7 @@ from viv.bus import BUS
 
 LONG = 24000          # 1,5 s de fala a 16 kHz: mínimo para decidir quem fala
 FRESH = 90.0          # s em que a última identificação continua valendo
+TRUST = 300.0         # s em que a voz do dono, reconhecida com segurança, mantém as permissões
 
 
 class Speaker:
@@ -33,6 +34,7 @@ class Speaker:
         self.reference = None
         self.people: dict[str, np.ndarray] = {}
         self.current = {"name": "", "owner": False, "known": False, "score": 0.0, "at": float("-inf")}
+        self.trusted_at = float("-inf")     # última vez que a voz do dono foi reconhecida com segurança
         self.last_score = 0.0
         self._clock = clock
         self._encoder = None
@@ -87,8 +89,18 @@ class Speaker:
         self.last_score = 0.0 if vec is None else float(np.dot(vec, self.reference))
         return self.last_score
 
+    def trusted(self) -> bool:
+        """A voz do dono foi reconhecida nos últimos 5 minutos e, desde então, não falou ninguém que
+        claramente não é ele. Uma fala só um pouco abaixo do limiar (ruído, fone, voz cansada) não
+        tira a confiança; outra voz cadastrada, ou uma bem diferente da do dono, tira."""
+        return self.enrolled and self._clock() - self.trusted_at <= TRUST
+
     def is_owner(self, audio: np.ndarray) -> bool:
+        """Esta fala (em geral um “sim”) é do dono? Dentro da janela de confiança, sim; a fala já
+        passou por hear(), que teria desfeito a confiança se fosse de outra pessoa."""
         score = self.score(audio)
+        if self.trusted():
+            return True
         if audio is not None and len(audio) >= LONG:
             return score >= self.threshold
         return score >= self.short_threshold and self.who()["owner"]
@@ -104,6 +116,10 @@ class Speaker:
         scores.update({name: float(np.dot(vec, ref)) for name, ref in self.people.items()})
         name, best = max(scores.items(), key=lambda item: item[1])
         known = best >= self.threshold
+        if known and name == owner_name:
+            self.trusted_at = self._clock()
+        elif known or scores[owner_name] < self.short_threshold:
+            self.trusted_at = float("-inf")       # outra pessoa falando: as permissões do dono caem
         before = (self.current["name"], self.current["known"])
         self.current = {"name": name if known else "", "owner": known and name == owner_name, "known": known,
                         "score": round(best, 3), "at": self._clock()}
@@ -118,9 +134,11 @@ class Speaker:
                 "known": bool(self.current["known"] and fresh), "heard": fresh}
 
     def stranger_present(self) -> bool:
-        """Há pouco falou, com fala suficiente para decidir, alguém que não é o dono?"""
+        """Há pouco falou outra pessoa cadastrada (não o dono)? Voz apenas não reconhecida não conta:
+        o reconhecimento falha com ruído, fone ou microfone diferente, e pedir confirmação a cada
+        leitura do WhatsApp por isso atrapalhava o próprio dono."""
         who = self.who()
-        return self.enrolled and who["heard"] and not who["owner"]
+        return self.enrolled and who["known"] and not who["owner"] and not self.trusted()
 
     def _mean(self, clips: list[np.ndarray]) -> np.ndarray:
         ref = np.mean([self._embed(c) for c in clips], axis=0)

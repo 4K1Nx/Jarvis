@@ -12,6 +12,7 @@ SDK google-genai 3.2 (API v1beta), nomes conferidos com scripts/probe_live.py:
 import asyncio
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from enum import Enum
 from typing import Callable
@@ -97,6 +98,9 @@ class Viv:
         self._wake_requested = False
         self._sleep_requested = False
         self._outbox: list[str] = []
+        self._passing: list[str] = []         # avisos que só valem com ela acordada (mention)
+        self._captions: deque = deque()       # (posição do áudio, texto, final) à espera de tocar
+        self._caption_mark = 0
         registry.load_all()
 
     # ---- API thread-safe -------------------------------------------------
@@ -114,6 +118,15 @@ class Viv:
             self._outbox.append(text)
             self._wake_requested = True
 
+    def mention(self, text: str) -> bool:
+        """Aviso de passagem (uma mensagem nova chegou): ela fala só se estiver acordada. Dormindo,
+        nada acontece e o aviso não fica guardado para depois."""
+        with self._lock:
+            if self.state in (State.SLEEPING, State.ERROR):
+                return False
+            self._passing.append(text)
+            return True
+
     def remind(self, text: str) -> None:
         self.notify(f"Lembrete agendado pelo usuário chegou na hora: {text}")
 
@@ -124,6 +137,8 @@ class Viv:
         while True:
             await self._wait_for_wake()
             await self._awake()
+            with self._lock:
+                self._passing.clear()
             self.audio.flush()
             self.watcher.reset()
             self._set(State.SLEEPING)
@@ -210,6 +225,9 @@ class Viv:
                     ERRORS.record("voz", f"{live['voice']}: {exc}")
                     live["voice"] = SAFE_VOICE
                     continue
+                if "already connected" in str(exc).lower():
+                    # retomar pela alça antiga colide com a conexão que ainda não fechou: começa uma sessão nova
+                    handle = None
                 kind = classify(exc)
                 ERRORS.record("conexão Gemini", f"{type(exc).__name__}: {exc}")
                 if self.clock() - started >= 10:
@@ -255,6 +273,36 @@ class Viv:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            self._pump_captions(everything=True)
+
+    # ---- legenda da Viv no ritmo do áudio ------------------------------------------------
+    # O Gemini manda o texto da fala bem antes de o áudio terminar de tocar. Mostrar na hora fazia a
+    # tela (e o destaque do WhatsApp) correr à frente da voz: ela falava da mãe e a tela já estava na
+    # namorada. Cada trecho de texto passa a aparecer quando o áudio que veio antes dele começa a tocar.
+    def _caption(self, text: str, final: bool) -> None:
+        position = getattr(self.audio, "position", None)
+        if position is None:
+            BUS.emit("transcript", text, role="viv", final=final)
+            return
+        queued, played = position()
+        mark, self._caption_mark = (queued if final else self._caption_mark), queued
+        if played >= mark and not self._captions:
+            BUS.emit("transcript", text, role="viv", final=final)
+        else:
+            self._captions.append((mark, text, final))
+
+    def _pump_captions(self, everything: bool = False) -> None:
+        position = getattr(self.audio, "position", None)
+        if not self._captions:
+            return
+        # sem nada tocando (fala interrompida ou caixa parada), não há o que esperar
+        if position is None or everything or not self.audio.is_playing():
+            played = float("inf")
+        else:
+            played = position()[1]
+        while self._captions and self._captions[0][0] <= played:
+            _, text, final = self._captions.popleft()
+            BUS.emit("transcript", text, role="viv", final=final)
 
     async def _send_mic(self, session) -> None:
         while True:
@@ -279,8 +327,10 @@ class Viv:
         while True:
             await asyncio.sleep(0.05)
             self.gate.tick()
+            self._pump_captions()
             with self._lock:
-                outbox, self._outbox = self._outbox, []
+                outbox, self._outbox = self._outbox + self._passing, []
+                self._passing = []
                 sleep_now = self._sleep_requested
                 self._wake_requested = False
             for text in outbox:
@@ -322,6 +372,9 @@ class Viv:
             return
         if content.interrupted:
             self.audio.flush()
+            self._pump_captions(everything=True)
+            position = getattr(self.audio, "position", None)
+            self._caption_mark = position()[0] if position is not None else 0
             self._turn_done = False
             self._save_viv_turn()
             if self.mood is not None:
@@ -337,7 +390,7 @@ class Viv:
         said = content.output_transcription
         if said is not None and said.text:
             self._viv_text += said.text
-            BUS.emit("transcript", self._viv_text.strip(), role="viv", final=False)
+            self._caption(self._viv_text.strip(), final=False)
         if content.turn_complete:
             await self._finish_user_turn()
             self._save_viv_turn()
@@ -363,11 +416,13 @@ class Viv:
     def _save_viv_turn(self) -> None:
         text, self._viv_text = self._viv_text.strip(), ""
         if text:
-            BUS.emit("transcript", text, role="viv", final=True)
+            self._caption(text, final=True)
             self.memory.add_turn("viv", text)
 
     async def _run_tools(self, session, calls) -> None:
         self._activity = self.clock()
+        # a fala que pediu a ferramenta pode ainda não ter fechado: a voz e o pedido entram antes
+        await self._finish_user_turn()
         self._set(State.EXECUTING)
         responses = []
         for call in calls:

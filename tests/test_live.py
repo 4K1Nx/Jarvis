@@ -305,3 +305,14 @@ async def test_long_running_tool_does_not_trigger_idle_sleep(env):
     assert env.viv.state == State.EXECUTING
     release.set()
     await until(lambda: s.tool_responses)
+
+
+async def test_session_already_connected_starts_a_fresh_session(env):
+    """Retomar pela alça antiga, com a conexão anterior ainda aberta, falhava em laço (erro 1008)."""
+    env.viv.wake("button")
+    session = await awake(env)
+    session.push(msg(handle="alca-1"), msg(go_away=True))
+    env.connect.failures.append(RuntimeError("1008 None. BidiGenerateContent session is already connected to an existing client"))
+    await until(lambda: len(env.connect.sessions) == 2 and env.viv.state == State.LISTENING)
+    handles = [c["session_resumption"]["handle"] for c in env.connect.configs]
+    assert handles == [None, "alca-1", None], "depois do 1008, começa sem a alça antiga"

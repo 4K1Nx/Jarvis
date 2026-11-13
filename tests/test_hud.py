@@ -415,3 +415,91 @@ def test_whatsapp_connect_card_shows_qr_or_code_and_closes_when_connected(page):
     emit(page, channel="whatsapp", text="Conectar WhatsApp", mode="conectar", qr="https://evil.example/qr.png")
     page.wait_for_timeout(300)
     assert page.locator("#wa img").count() == 0 and page.errors == []
+
+
+def test_spotlight_follows_whole_names_not_a_shared_first_word(page):
+    chats = [{"name": "Maria Silva", "label": "Mãe", "aliases": ["Mãe", "Maria Silva", "Maria"], "last": "Me liga",
+              "unread": 1, "photo": "", "novas": [{"autor": "", "texto": "Me liga quando puder", "hora": "09:10"}]},
+             {"name": "Ana Beatriz Lima", "label": "Minha namorada", "aliases": ["Minha namorada", "Ana Beatriz Lima", "Ana"],
+              "last": "kkk", "unread": 1, "photo": "", "novas": [{"autor": "", "texto": "saudade", "hora": "09:12"}]},
+             {"name": "Família", "label": "Família", "aliases": ["Família"], "group": True, "last": "Tio Zé: foto",
+              "unread": 1, "photo": "", "novas": [{"autor": "Tio Zé", "texto": "foto da festa", "hora": "09:00"}]},
+             {"name": "Carlos", "label": "Carlos", "aliases": ["Carlos"], "mine": True, "last": "Você: ok", "unread": 0, "photo": ""}]
+    emit(page, channel="whatsapp", text="WhatsApp", mode="lista", chats=chats)
+    emit(page, channel="state", state="speaking")
+    emit(page, channel="transcript", text="Minha nossa, sua mãe pediu para você ligar.", role="viv", final=False)
+    page.wait_for_selector(".wa-spot.in")
+    assert page.text_content(".wa-spot.in .wa-who b") == "Mãe", "“minha” sozinho não é a namorada"
+    assert "Me liga quando puder" in page.text_content(".wa-spot.in")
+    emit(page, channel="transcript", text="Minha nossa, sua mãe pediu para você ligar. No grupo Família, o Tio Zé mandou foto.",
+         role="viv", final=False)
+    page.wait_for_timeout(700)
+    spot = page.locator(".wa-spot.in")
+    assert "Família" in spot.text_content() and page.text_content(".wa-spot.in .wa-author") == "Tio Zé"
+    emit(page, channel="state", state="listening")
+    page.wait_for_selector(".wa-list.in")
+    assert "Você: ok" in page.text_content(".wa-list") and page.locator(".wa-badge").count() == 3
+    opened = []
+    page.route("**/api/whatsapp/abrir", lambda route: (opened.append(route.request.post_data_json), route.fulfill(json={"ok": True})))
+    page.wait_for_timeout(600)
+    page.locator(".wa-row-open").nth(1).click()
+    page.wait_for_timeout(300)
+    assert opened == [{"contato": "Ana Beatriz Lima"}] and page.errors == []
+
+
+def test_group_chat_shows_who_wrote_each_message(page):
+    messages = [{"out": False, "autor": "Tio Zé", "hora": "09:00", "texto": "foto da festa", "audio": False, "imagem": ""},
+                {"out": True, "autor": "Você", "hora": "09:05", "texto": "linda!", "audio": False, "imagem": ""},
+                {"out": False, "autor": "Ana", "hora": "09:06", "texto": "kkk", "audio": False, "imagem": ""}]
+    emit(page, channel="whatsapp", text="Família", mode="chat", contact="Família", group=True, messages=messages)
+    page.wait_for_selector(".wa-chat.in")
+    page.wait_for_timeout(700)
+    assert page.locator(".wa-author").all_text_contents() == ["Tio Zé", "Ana"]
+    emit(page, channel="whatsapp", text="Mãe", mode="chat", contact="Maria Silva", group=False,
+         messages=[{"out": False, "autor": "Maria Silva", "hora": "09:00", "texto": "oi", "audio": False, "imagem": ""}])
+    page.wait_for_timeout(700)
+    assert page.locator(".wa-chat.in .wa-author").count() == 0, "em conversa a dois, não repete o nome"
+
+
+def test_audio_in_open_chat_plays_or_transcribes_and_message_toast_opens_the_chat(page):
+    jid = "5551999990001@s.whatsapp.net"
+    posted, opened = [], []
+    page.route("**/api/whatsapp/audio", lambda route: (posted.append(route.request.post_data_json),
+                                                        route.fulfill(json={"ok": True, "transcricao": "chego às 8"})))
+    page.route("**/api/whatsapp/abrir", lambda route: (opened.append(route.request.post_data_json), route.fulfill(json={"ok": True})))
+    messages = [{"out": False, "autor": "Cris", "hora": "18:31", "texto": "", "audio": True, "imagem": "", "id": "3EB0AUDIO1",
+                 "transcricao": ""},
+                {"out": False, "autor": "Cris", "hora": "18:32", "texto": "", "audio": True, "imagem": "", "id": "3EB0AUDIO2",
+                 "transcricao": "já ouvido"}]
+    emit(page, channel="whatsapp", text="Cris", mode="chat", contact="Cris", jid=jid, group=False, messages=messages)
+    page.wait_for_selector(".wa-chat.in")
+    assert page.locator(".wa-transcribe").count() == 1, "áudio já transcrito mostra o texto, sem botão"
+    assert "já ouvido" in page.text_content(".wa-chat")
+    page.click(".wa-transcribe")
+    page.wait_for_function("document.querySelector('.wa-heard').textContent === 'chego às 8'")
+    page.locator(".wa-play").first.click()
+    page.wait_for_timeout(300)
+    assert posted == [{"jid": jid, "id": "3EB0AUDIO1", "acao": "transcrever"}, {"jid": jid, "id": "3EB0AUDIO1", "acao": "tocar"}]
+
+    emit(page, channel="card", text="WhatsApp: Cris", kind="action", ok=True, wa=jid, body="Foto nova na conversa com Cris.")
+    page.wait_for_selector(".card.toast.clickable.in")
+    page.click(".card.toast.clickable")
+    page.wait_for_timeout(300)
+    assert opened == [{"contato": jid}] and page.errors == []
+
+
+def test_draft_panel_and_whatsapp_chat_stack_instead_of_overlapping(page):
+    messages = [{"out": False, "autor": "Elvis", "hora": f"09:{n:02d}", "texto": f"mensagem {n}", "audio": False,
+                 "imagem": ""} for n in range(12)]
+    emit(page, channel="whatsapp", text="Elvis", mode="chat", contact="Elvis", group=False, messages=messages)
+    page.wait_for_selector(".wa-chat.in")
+    emit(page, channel="card", text="Rascunho para Elvis", kind="content", ok=True, body="**Para:** Elvis\n\n> Já te falo")
+    page.wait_for_selector(".card.panel.in")
+    page.wait_for_timeout(700)
+    panel = page.locator(".card.panel").bounding_box()
+    chat = page.locator(".wa-chat").bounding_box()
+    assert chat["y"] >= panel["y"] + panel["height"], "a conversa fica abaixo do rascunho, não por cima"
+    assert page.locator(".wa-chat.in").count() == 1, "abrir o rascunho não fecha a conversa"
+    page.click(".panel-close")
+    page.wait_for_timeout(700)
+    assert page.evaluate("document.getElementById('wa').style.top") == "" and page.errors == []

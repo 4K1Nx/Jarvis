@@ -51,7 +51,9 @@ class FakeGowa:
                    "sender_display_name": "Ana Beatriz Lima"}],
             CHEFE: [{"id": "C1", "content": "Reunião amanhã", "is_from_me": False, "timestamp": stamp(300)},
                     {"id": "C2", "content": "ok, estarei lá", "is_from_me": True, "timestamp": stamp(290)}],
-            GRUPO: [{"id": "G1", "content": "foto da festa", "is_from_me": False, "timestamp": stamp(60)}],
+            GRUPO: [{"id": "G0", "content": "bom dia", "is_from_me": True, "timestamp": stamp(90)},
+                    {"id": "G1", "content": "foto da festa", "is_from_me": False, "timestamp": stamp(60),
+                     "sender_jid": "5527999990005@s.whatsapp.net", "sender_display_name": "Tio Zé"}],
         }
         self.files = {"B2": ("statics/media/bia/foto.png", png()), "B3": ("statics/media/bia/audio.ogg", b"OggS-fake")}
 
@@ -122,11 +124,15 @@ def test_chat_list_shows_pending_replies_previews_and_photos(server):
     assert [c["name"] for c in chats] == ["Ana Beatriz Lima", "Família", "Carlos Souza"], "status fica de fora"
     bia, grupo, chefe = chats
     assert bia["unread"] == 3 and bia["last"] == "🎤 Áudio" and bia["photo"].startswith("https://pps.whatsapp.net/")
-    assert chefe["unread"] == 0, "a última é minha: nada pendente"
-    assert grupo["photo"] == "" and grupo["unread"] == 1
+    assert [m["texto"] for m in bia["novas"]] == ["oi amor, vem hoje?", "📷 Foto: olha", "🎤 Áudio"], "só as que ela mandou"
+    assert not bia["mine"] and not bia["group"]
+    assert chefe["unread"] == 0 and chefe["mine"] and chefe["last"] == "Você: ok, estarei lá", "a última é do usuário"
+    assert grupo["group"] and grupo["photo"] == "" and grupo["unread"] == 1
+    assert grupo["last"] == "Tio Zé: foto da festa" and grupo["novas"][0]["autor"] == "Tio Zé", "quem do grupo escreveu"
     assert all(device == "viv" for _, path, _, device in fake.calls if path != "/devices")
-    assert whatsapp.clean_chats(chats)[0] == {"name": "Ana Beatriz Lima", "last": "🎤 Áudio", "unread": 3,
-                                              "photo": "https://pps.whatsapp.net/v/5527999990001.jpg"}
+    clean = whatsapp.clean_chats(chats)[0]
+    assert clean["name"] == "Ana Beatriz Lima" and clean["unread"] == 3 and len(clean["novas"]) == 3
+    assert set(clean) == {"name", "last", "unread", "photo", "group", "mine", "novas"}, "o jid não vai para a tela"
 
 
 def test_old_unanswered_message_is_not_pending(server):
@@ -189,7 +195,7 @@ def test_send_success_refusal_and_uncertain_result(server):
 def test_webhook_needs_local_origin_and_valid_signature_and_ignores_groups_and_own_messages(server):
     _, service, _ = server
     seen = []
-    service.on_message = lambda jid, name: seen.append((jid, name))
+    service.on_message = lambda jid, name, kind, text: seen.append((jid, name, kind, text))
 
     def post(payload, host="127.0.0.1", secret=None):
         body = json.dumps({"event": "message", "payload": payload}).encode()
@@ -200,7 +206,11 @@ def test_webhook_needs_local_origin_and_valid_signature_and_ignores_groups_and_o
     assert not post({"chat_id": BIA, "is_from_me": False}, host="192.168.0.20")
     assert not post({"chat_id": BIA, "is_from_me": False}, secret="chute")
     assert post({"chat_id": GRUPO, "is_from_me": False}) and post({"chat_id": BIA, "is_from_me": True})
-    assert seen == [(BIA, "Ana Beatriz Lima")]
+    assert post({"chat_id": CHEFE, "from_name": "Carlos", "is_from_me": False, "image": {"caption": ""}})
+    # canal (newsletter) e status nunca viram aviso: era a “foto nova” de número estranho
+    assert post({"chat_id": "120363424919294631@newsletter", "is_from_me": False, "image": {}})
+    assert post({"chat_id": "status@broadcast", "is_from_me": False, "body": "x"})
+    assert seen == [(BIA, "Ana Beatriz Lima", "texto", "oi"), (CHEFE, "Carlos", "foto", "")]
 
 
 def test_server_route_rejects_forged_events(server):
@@ -245,7 +255,13 @@ def events(monkeypatch):
 def test_tools_use_the_direct_service_without_a_browser(tools, events):
     fake, service, ctx, _ = tools
     out = registry.call("whatsapp_conversas", {}, ctx)
-    assert out.startswith("Bia [contato: Ana Beatriz Lima] (3 nova(s)): 🎤 Áudio")
+    assert out.startswith("- Bia [contato: Ana Beatriz Lima]: 3 mensagem(ns) nova(s) que a pessoa mandou para o usuário: "
+                          "“oi amor, vem hoje?”")
+    assert "- Carlos Souza: a última mensagem é DO USUÁRIO (“ok, estarei lá”)" in out
+    assert "- Família (grupo): 1 mensagem(ns) nova(s) no grupo: Tio Zé: “foto da festa”" in out
+    assert "nunca diga que ele a recebeu" in out
+    chats = [extra for channel, _, extra in events if channel == "whatsapp" and extra.get("mode") == "lista"][0]["chats"]
+    assert "Bia" in chats[0]["aliases"] and "Ana" in chats[0]["aliases"]
     opened = registry.call("whatsapp_abrir", {"contato": "Bia"}, ctx)
     assert "conversa com Bia aberta na tela" in opened and "oi amor, vem hoje?" in opened and "[áudio]" in opened
     shown = [extra for channel, _, extra in events if channel == "whatsapp" and extra.get("mode") == "chat"][0]
@@ -323,3 +339,97 @@ def test_install_script_pins_version_and_checksum():
     from scripts import instalar_whatsapp as installer
     assert installer.VERSION == "9.6.0" and len(installer.SHA256) == 64
     assert installer.URL.endswith("whatsapp_9.6.0_windows_amd64.zip")
+
+
+# ---- arquivadas, silenciadas, nomes de grupo e de quem escreveu ---------------------------------
+def local_db(folder, archived=(), muted=(), contacts=(), lids=()):
+    import sqlite3
+    path = folder / "gowa" / "storages" / "whatsapp.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
+    con.executescript("""
+        create table whatsmeow_chat_settings (our_jid text, chat_jid text, muted_until integer, pinned bool, archived bool,
+                                              wasa_root_secret_id text);
+        create table whatsmeow_lid_map (lid text, pn text);
+        create table whatsmeow_contacts (our_jid text, their_jid text, first_name text, full_name text, push_name text,
+                                         business_name text, redacted_phone text);""")
+    for jid in archived:
+        con.execute("insert into whatsmeow_chat_settings values ('eu', ?, 0, 0, 1, '')", (jid,))
+    for jid, until in muted:
+        con.execute("insert into whatsmeow_chat_settings values ('eu', ?, ?, 0, 0, '')", (jid, until))
+    for jid, full, push in contacts:
+        con.execute("insert into whatsmeow_contacts values ('eu', ?, '', ?, ?, '', '')", (jid, full, push))
+    con.executemany("insert into whatsmeow_lid_map values (?, ?)", lids)
+    con.commit()
+    con.close()
+
+
+def test_archived_chats_are_hidden_and_muted_ones_are_never_pending(server):
+    fake, service, tmp_path = server
+    local_db(tmp_path, archived=[CHEFE], muted=[(BIA, -1)])
+    names = [c["name"] for c in service.chat_list()]
+    assert "Carlos Souza" not in names, "arquivada não aparece"
+    bia = next(c for c in service.chat_list() if c["name"] == "Ana Beatriz Lima")
+    assert bia["unread"] == 0 and bia["novas"] == [] and bia["muted"], "silenciada nunca fica pendente"
+    service._index = None
+    local_db(tmp_path / "outra")                          # base sem marcações: nada é escondido
+    service.folder = tmp_path / "outra" / "gowa"
+    assert len(service.chat_list()) == 3
+
+
+def test_expired_mute_counts_again(server):
+    fake, service, tmp_path = server
+    local_db(tmp_path, muted=[(BIA, int(NOW.timestamp()) - 60)])
+    assert next(c for c in service.chat_list() if c["name"] == "Ana Beatriz Lima")["unread"] == 3
+
+
+def test_group_gets_its_real_name_and_senders_get_contact_names(server):
+    fake, service, tmp_path = server
+    fake.chats[2]["name"] = "Group 120363000000000001"
+    fake.messages[GRUPO][1].update(sender_display_name="555181424207", sender_jid="98765@lid")
+    local_db(tmp_path, contacts=[("555181424207@s.whatsapp.net", "Tio Zé", "zezinho")], lids=[("98765", "555181424207")])
+    original, asked = fake.__call__, []
+
+    def handler(request):
+        if request.url.path == "/group/info":
+            asked.append(request.url.params["group_id"])
+            return httpx.Response(200, json={"results": {"JID": GRUPO, "Name": "Família Silva"}})
+        return original(request)
+    service.http = httpx.Client(base_url="http://127.0.0.1:39001", transport=httpx.MockTransport(handler))
+    grupo = next(c for c in service.chat_list() if c["group"])
+    assert grupo["name"] == "Família Silva" and grupo["last"] == "Tio Zé: foto da festa"
+    service.chat_list()
+    assert asked == [GRUPO], "o nome do grupo é perguntado uma vez só"
+    assert service.resolve("família silva") == ("Família Silva", GRUPO)
+
+
+def test_unknown_sender_shows_a_readable_phone_number(server):
+    _, service, _ = server
+    assert service.author({"is_from_me": False, "sender_display_name": "", "sender_jid": "555181424207@s.whatsapp.net"}) \
+        == "+55 51 8142-4207"
+    assert service.author({"is_from_me": True}) == "Você"
+    assert direct.phone("5511987654321@s.whatsapp.net") == "+55 11 98765-4321"
+
+
+def test_transcription_decodes_the_audio_itself(monkeypatch):
+    """O leitor de arquivos do Whisper quebra com o PyAV instalado (open() sem metadata_errors): a Viv
+    decodifica e entrega as amostras."""
+    import faster_whisper
+    import numpy as np
+    received = []
+
+    class Model:
+        def __init__(self, *a, **k):
+            pass
+
+        def transcribe(self, audio, **options):
+            received.append(audio)
+            return iter([type("S", (), {"text": " liga pra mim "})()]), None
+    monkeypatch.setattr(faster_whisper, "WhisperModel", Model)
+    monkeypatch.setattr(whatsapp, "_WHISPER", {})
+    monkeypatch.setattr(direct, "decode_pcm", lambda raw, rate=24000: (np.ones(16000 * 2, dtype=np.int16) * 1000).tobytes())
+    assert whatsapp.transcribe(b"OggS", {}) == "liga pra mim"
+    assert isinstance(received[0], np.ndarray) and received[0].dtype == np.float32 and len(received[0]) == 32000
+    monkeypatch.setattr(direct, "decode_pcm", lambda raw, rate=24000: (_ for _ in ()).throw(ValueError("ruim")))
+    with pytest.raises(RuntimeError, match="decodificar"):
+        whatsapp.transcribe(b"lixo", {})

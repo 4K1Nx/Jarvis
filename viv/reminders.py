@@ -17,6 +17,7 @@ class Reminders:
     def __init__(self, path: str, notify: Callable[[str], None]):
         self.path = Path(path)
         self.notify = notify
+        self.deliver: Callable[[str, str], None] | None = None   # (jid, texto): lembrete pedido pelo WhatsApp
         self._lock = threading.RLock()
         self._stop = threading.Event()
         try:
@@ -31,13 +32,15 @@ class Reminders:
         tmp.write_text(json.dumps(self._jobs, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
-    def schedule_in(self, seconds: float, text: str) -> str:
+    def schedule_in(self, seconds: float, text: str, to: str = "") -> str:
         seconds = float(seconds)
         if not math.isfinite(seconds) or not 0 < seconds <= 366 * 86400 or not text.strip():
             raise ValueError("prazo ou texto do lembrete inválido")
         with self._lock:
-            self._jobs.append({"at": time.time() + seconds, "text": text.strip(),
-                               "repeat_daily": False, "tool": None, "args": None})
+            job = {"at": time.time() + seconds, "text": text.strip(), "repeat_daily": False, "tool": None, "args": None}
+            if to:
+                job["para"] = to
+            self._jobs.append(job)
             self._save()
         return "lembrete criado"
 
@@ -51,7 +54,10 @@ class Reminders:
         with self._lock:
             for job in [j for j in self._jobs if _is_reminder(j) and j["at"] <= now]:
                 try:
-                    self.notify(job["text"])
+                    if job.get("para") and self.deliver is not None:
+                        self.deliver(job["para"], job["text"])
+                    else:
+                        self.notify(job["text"])
                 except Exception:
                     continue  # continua pendente e tenta de novo no próximo ciclo
                 self._jobs.remove(job)

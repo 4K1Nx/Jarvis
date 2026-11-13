@@ -163,7 +163,8 @@ def test_style_keeps_tone_and_only_five_of_the_users_own_examples(world):
         world.call("pessoa_estilo", contato="Bia", exemplo=f"oi amor {n}")
     prepared = world.call("mensagem_preparar", contato="Bia")
     assert "carinhoso e curto" in prepared and "oi amor 6" in prepared and "oi amor 1" not in prepared
-    assert "pergunte a ele em vez de inventar" in prepared and "sem atribuir intenção" in prepared
+    assert "você escreve a resposta" in prepared and "espaço para a pessoa explicar" in prepared
+    assert "fatos que você não sabe" in prepared
 
 
 # ---- consentimento --------------------------------------------------------------------------

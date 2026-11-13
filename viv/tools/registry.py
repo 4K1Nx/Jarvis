@@ -28,19 +28,24 @@ class Context:
     relations: Any = None
     gowa: Any = None
     audio: Any = None
+    remote: Any = None
+    origin: str = ""          # JID do contato administrador que pediu pelo WhatsApp; vazio = o dono, no PC
 
 
 def tool(name: str, description: str, params: dict, dangerous: bool = False,
-         title: str | None = None, card: bool = True, confirm=None, private: bool = False):
+         title: str | None = None, card: bool = True, confirm=None, private: bool = False, voice: bool = False):
     """Registra uma ferramenta. `title` é o rótulo do cartão na HUD; `card=False`
     quando a própria ferramenta emite um cartão específico. `confirm(args)` devolve o texto do
     cartão de confirmação de uma ação perigosa e pode levantar erro se o pedido for inválido.
-    `private`: expõe conteúdo pessoal; pede confirmação quando quem fala não é o dono."""
+    `private`: expõe conteúdo pessoal; pede confirmação quando quem fala não é o dono.
+    `voice`: ação perigosa que a voz reconhecida do dono, pedindo-a na hora, já autoriza (viv/safety.py).
+    Pode ser `voice(args)`, que devolve quando o que vai ser autorizado apareceu na tela (relógio
+    monotônico) ou None: o pedido falado só vale se vier depois disso."""
     def deco(fn):
         props = {k: {a: b for a, b in v.items() if a != "required"} for k, v in params.items()}
         _REG[name] = {
             "fn": fn, "dangerous": dangerous, "title": title or name, "card": card, "confirm": confirm,
-            "private": private,
+            "private": private, "voice": voice,
             "declaration": {"name": name, "description": description, "parameters": {
                 "type": "object", "properties": props,
                 "required": [k for k, v in params.items() if v.get("required", True)]}},
@@ -53,12 +58,26 @@ def declarations() -> list[dict]:
     return [t["declaration"] for t in _REG.values()]
 
 
+def names() -> list[str]:
+    return list(_REG)
+
+
+def module_of(name: str) -> str:
+    entry = _REG.get(name)
+    return entry["fn"].__module__ if entry else ""
+
+
 def is_dangerous(name: str, cfg: dict) -> bool:
     return name in cfg.get("safety", {}).get("dangerous", []) or _REG.get(name, {}).get("dangerous", False)
 
 
 def is_private(name: str) -> bool:
     return _REG.get(name, {}).get("private", False)
+
+
+def voice_approvable(name: str):
+    """False, True, ou a função que diz quando o pedido apareceu na tela."""
+    return _REG.get(name, {}).get("voice", False)
 
 
 def progress(label: str, value: float | None = None) -> None:

@@ -3,26 +3,38 @@ import json
 import re
 import time
 
-FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-2.5-flash")
+# Reservas para quando o modelo principal está sobrecarregado. O gemini-2.5-flash saiu da lista: foi
+# desligado para contas novas e, sendo o último reserva, o erro dele (404) escondia a sobrecarga real.
+FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3-flash-preview")
+GONE = ("404", "not_found", "not found", "no longer available", "is not supported")
 TRANSIENT = ("503", "unavailable", "429", "resource_exhausted", "overloaded", "high demand", "deadline", "timeout", "500")
 
 
-def generate(client, model: str, contents, sleep=time.sleep, label: str = "de texto", config: dict | None = None) -> str:
-    """Pergunta ao modelo. Em falha passageira (503, cota), tenta de novo e cai para modelos reserva."""
-    last = None
+def generate(client, model: str, contents, sleep=time.sleep, label: str = "de texto", config: dict | None = None,
+             raw: bool = False):
+    """Pergunta ao modelo. Em falha passageira (503, cota), tenta de novo e cai para modelos reserva.
+    Devolve o texto, ou a resposta inteira com `raw` (para ler chamadas de ferramenta)."""
+    first, busy = None, False
     extra = {"config": config} if config else {}
     for name in dict.fromkeys((model,) + FALLBACK_MODELS):
         for attempt in range(2):
             try:
                 response = client.models.generate_content(model=name, contents=contents, **extra)
-                return (response.text or "").strip()
+                return response if raw else (response.text or "").strip()
             except Exception as exc:
-                last = exc
-                if not any(marker in str(exc).lower() for marker in TRANSIENT):
+                text = str(exc).lower()
+                if any(marker in text for marker in GONE):
+                    first = first or exc
+                    break                             # esse modelo não existe para esta chave: tenta o próximo
+                if not any(marker in text for marker in TRANSIENT):
                     raise
+                first, busy = first or exc, True
                 if attempt == 0:
                     sleep(1.5)
-    raise RuntimeError(f"o serviço {label} está sobrecarregado agora; tente de novo em instantes ({str(last)[:80]})")
+    if busy:
+        raise RuntimeError(f"o serviço {label} está sobrecarregado agora; tente de novo em instantes ({str(first)[:80]})")
+    raise RuntimeError(f"nenhum modelo {label} disponível para esta chave ({model} e reservas); ajuste tools.text.model "
+                       f"no config.yaml ({str(first)[:80]})")
 
 
 def parse_json(text: str):

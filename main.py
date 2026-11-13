@@ -41,6 +41,7 @@ class Parts:
     gowa: Any = None
 
 
+NOTICE_GAP = 120                   # s: mensagens seguidas da mesma conversa geram um aviso só
 RAIN_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}     # códigos de chuva da Open-Meteo
 
 
@@ -72,6 +73,7 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     from viv.people import People
     from viv.relations import Relations, RelationsClock
     from viv.gowa import Gowa
+    from viv.remote import Remote
     from viv.reminders import Reminders
     from viv.safety import Gate
     from viv.speaker import Speaker
@@ -94,14 +96,33 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     people = People()
     relations = Relations(label=people.label)
 
-    def new_message(jid, name):
-        """Mensagem nova no WhatsApp: só o aviso de quem mandou, nunca o conteúdo."""
-        if settings.get("whatsapp.avisar_novas"):
-            BUS.emit("card", f"WhatsApp: mensagem de {people.label(name)}", kind="action",
-                     body="Diga “Viv, lê a mensagem”.", ok=True)
+    noticed: dict[str, float] = {}
+
+    def new_message(jid, name, kind="texto", text=""):
+        """Mensagem nova no WhatsApp. Um comando /viv (contato administrador, bloqueio) vai para
+        viv/remote.py e não vira aviso. Dormindo, a Viv só mostra a notificação na tela; acordada,
+        também avisa falando. Nunca diz o conteúdo por conta própria. Várias mensagens seguidas da
+        mesma conversa geram um aviso só."""
+        if remote.handle(jid, name, text, ctx, gowa.send):
+            return
+        if not settings.get("whatsapp.avisar_novas"):
+            return
+        now = time.monotonic()
+        if now - noticed.get(jid, float("-inf")) < NOTICE_GAP:
+            return
+        noticed[jid] = now
+        label = people.label(name)
+        what = {"texto": "Mensagem nova", "foto": "Foto nova", "áudio": "Áudio novo", "vídeo": "Vídeo novo"}.get(
+            kind, f"Nova mensagem ({kind})")
+        BUS.emit("card", f"WhatsApp: {label}", kind="action", ok=True, wa=jid,
+                 body=f"{what} na conversa com {label}. Clique para abrir.")
+        viv.mention(f"Chegou agora no WhatsApp uma mensagem nova ({kind}) de {label}. Avise o usuário em uma frase "
+                    "curta, sem inventar o conteúdo, e pergunte se ele quer que você leia. Se estiver no meio de outro "
+                    "assunto, termine a frase antes.")
     gowa = Gowa(cfg, int(cfg.get("server", {}).get("port", 8765)), on_message=new_message)
+    remote = Remote()
     ctx = Context(cfg, memory=memory, client=client, settings=settings, people=people, speaker=speaker, mood=mood,
-                  relations=relations, gowa=gowa, audio=audio)
+                  relations=relations, gowa=gowa, audio=audio, remote=remote)
     gate = Gate(cfg, ctx, speaker, Audit(cfg), notify=lambda text: None)
     gate.mood = mood
     watcher = WakeWatcher(cfg, audio, on_wake=lambda reason: viv.wake(reason))
@@ -109,6 +130,7 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
               speaker=speaker, mood=mood, people=people)
     gate.notify = viv.notify
     reminders = Reminders(cfg["reminders"]["path"], viv.remind)
+    reminders.deliver = lambda jid, text: gowa.send(jid, f"Viv: lembrete — {text}")
     ctx.reminders = reminders
     ctx.watch = ScreenWatch(lambda question: vision.look(ctx, question), viv.notify)
 
@@ -169,8 +191,17 @@ def welcome(parts: Parts, delay: float = 6.0) -> None:
     time.sleep(delay)
     unread = (lambda: mail.unread_count(parts.settings)) if (parts.settings.get("email.usuario")
                                                              and os.environ.get("VIV_EMAIL_SENHA")) else None
-    data = briefing.collect(parts.settings, parts.reminders, ERRORS, fetch_weather=weather.fetch, unread_count=unread)
+    from viv.tools import whatsapp
+    try:
+        pending = whatsapp.pending_chats(parts.gate.ctx)
+    except Exception as exc:                      # WhatsApp fora do ar não impede as boas-vindas
+        ERRORS.record("boas-vindas", f"WhatsApp: {exc}")
+        pending = None
+    data = briefing.collect(parts.settings, parts.reminders, ERRORS, fetch_weather=weather.fetch, unread_count=unread,
+                            whatsapp=pending)
     BUS.emit("card", "Resumo do dia", kind="content", format="tabela", body=briefing.panel(data), ok=True)
+    if pending:
+        BUS.emit("whatsapp", "WhatsApp", mode="lista", chats=pending)    # a tela acompanha quando ela citar cada um
     parts.viv.notify(briefing.prompt(data))
 
 

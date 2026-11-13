@@ -74,6 +74,12 @@ class People:
                     return dict(item)
         return None
 
+    def get(self, contato: str) -> dict | None:
+        """A pessoa salva com exatamente este nome de contato (sem aproximação)."""
+        with self._lock:
+            item = self._items.get(_fold(contato))
+            return dict(item) if item else None
+
     def resolve(self, ref: str) -> str:
         """Nome real do contato para um apelido ou relação; sem cadastro, devolve o próprio texto."""
         item = self.find(ref)

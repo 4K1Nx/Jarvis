@@ -66,7 +66,24 @@
     if (!panel) return;
     vanish(panel.el);
     panel = null;
+    stack();
   }
+
+  // O painel (rascunho, lista) e a conversa do WhatsApp ficam os dois à esquerda: em vez de um por
+  // cima do outro, o painel fica em cima, mais baixo, e a conversa logo abaixo dele.
+  function stack() {
+    const wa = document.getElementById('wa');
+    if (!wa) return;
+    const both = !!panel && !narrow() && !!wa.querySelector('.wa-card:not(.out)');
+    document.body.classList.toggle('stacked', both);
+    if (!both) { wa.style.top = ''; return; }
+    requestAnimationFrame(() => {
+      if (!panel) return;
+      wa.style.top = Math.round(panel.el.getBoundingClientRect().bottom + 14) + 'px';
+      drawLinks();
+    });
+  }
+  window.addEventListener('resize', stack);
 
   // ---- formatação ----------------------------------------------------------
   const INLINE = /\*\*([^*\n]+)\*\*|__([^_\n]+)__|\*([^*\s][^*\n]*)\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"')\]]+)/g;
@@ -250,6 +267,7 @@
       panel = { el: node };
       layer.prepend(node);
       life(node, PANEL_LIFE, () => { if (panel && panel.el === node) closePanel(); });
+      stack();
     } else {
       node.classList.add('toast');
       const limit = narrow() ? 3 : TOASTS;
@@ -259,6 +277,15 @@
       while (used.has(slot)) slot++;
       const card = { el: node, slot };
       toasts.push(card);
+      // notificação de mensagem do WhatsApp: clicar abre a conversa
+      if (/^[0-9A-Za-z.:_-]{3,40}@(s\.whatsapp\.net|lid)$/.test(event.wa || '') && window.VivWhatsApp) {
+        node.classList.add('clickable');
+        node.setAttribute('role', 'button'); node.tabIndex = 0;
+        node.setAttribute('aria-label', (event.text || 'WhatsApp') + ': abrir a conversa');
+        const go = () => { window.VivWhatsApp.open({ jid: event.wa }); removeToast(card); };
+        node.addEventListener('click', go);
+        node.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      }
       placeToast(card);
       layer.append(node);
       life(node, TOAST_LIFE, () => removeToast(card));
@@ -308,5 +335,5 @@
   };
   window.addEventListener('resize', relayout);
   window.addEventListener('viv-core-moved', drawLinks);
-  window.VivCards = { show, confirm, confirmDone, hint, closePanel };
+  window.VivCards = { show, confirm, confirmDone, hint, closePanel, stack };
 })();

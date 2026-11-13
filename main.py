@@ -37,6 +37,10 @@ class Parts:
     settings: Any = None
     routine: Any = None
     watch: Any = None
+    relations: Any = None
+
+
+RAIN_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}     # códigos de chuva da Open-Meteo
 
 
 def load_config() -> dict:
@@ -63,28 +67,37 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     from viv.audit import Audit
     from viv.gaps import CapabilityGaps
     from viv.memory import Memory
+    from viv.mood import Mood
+    from viv.people import People
+    from viv.relations import Relations, RelationsClock
     from viv.reminders import Reminders
     from viv.safety import Gate
     from viv.speaker import Speaker
     from viv.tools.registry import Context
     from viv.wake import WakeWatcher
-    if audio is None:
-        from viv.audio import AudioIO
-        audio = AudioIO(cfg)
     from viv import autostart
     from viv.routine import RoutineClock
     from viv.settings import Settings
     from viv.tools import vision
     from viv.watch import ScreenWatch
     settings = Settings(cfg.get("settings", {}).get("path", "data/viv_config.json"), cfg)
-    settings.overlay(cfg)
+    settings.overlay(cfg)                 # antes de criar o áudio: fones e sensibilidade salvos valem ao abrir
+    if audio is None:
+        from viv.audio import AudioIO
+        audio = AudioIO(cfg)
     cfg.setdefault("assistant", {}).update(user_name=settings.get("usuario.nome"), user_city=settings.get("usuario.cidade"))
     memory = Memory(cfg["memory"]["path"])
     speaker = Speaker(cfg)
-    ctx = Context(cfg, memory=memory, client=client, settings=settings)
+    mood = Mood(enabled=settings.get("humor.ativo"), refusals=settings.get("humor.recusa"))
+    people = People()
+    relations = Relations(label=people.label)
+    ctx = Context(cfg, memory=memory, client=client, settings=settings, people=people, speaker=speaker, mood=mood,
+                  relations=relations)
     gate = Gate(cfg, ctx, speaker, Audit(cfg), notify=lambda text: None)
+    gate.mood = mood
     watcher = WakeWatcher(cfg, audio, on_wake=lambda reason: viv.wake(reason))
-    viv = Viv(cfg, audio, gate, memory, watcher, connect, gaps=CapabilityGaps())
+    viv = Viv(cfg, audio, gate, memory, watcher, connect, gaps=CapabilityGaps(),
+              speaker=speaker, mood=mood, people=people)
     gate.notify = viv.notify
     reminders = Reminders(cfg["reminders"]["path"], viv.remind)
     ctx.reminders = reminders
@@ -108,10 +121,35 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
             watcher.configure(name=value)
         elif key == "inicio.com_windows":
             autostart.apply(value)
+        elif key == "humor.ativo":
+            mood.configure(enabled=value)
+        elif key == "humor.recusa":
+            mood.configure(refusals=value)
+        elif key == "voz.nome":
+            cfg.setdefault("live", {})["voice"] = value
     settings.on_change(apply_setting)
-    app = create_app(viv, gate, audio, cfg, speaker, settings)
+    app = create_app(viv, gate, audio, cfg, speaker, settings, mood)
+
+    def private_notice(title, text):
+        """Lembrete pessoal: por padrão só na tela; em voz alta se o usuário ligou."""
+        if settings.get("relacoes.avisos_por_voz"):
+            viv.notify(f"Lembrete privado do usuário — {title}: {text}")
+        else:
+            audio.beep("wake")
+            BUS.emit("card", title, kind="content", format="texto", body=text, ok=True)
+
+    def replied(contact):
+        from viv.tools import whatsapp
+        return whatsapp.replied(contact, ctx=ctx)
+
+    def raining():
+        from viv.tools import weather
+        _, forecast = weather.fetch(settings.get("usuario.cidade"), settings.get("usuario.estado") or None)
+        return int(forecast.get("current", {}).get("weather_code", 0)) in RAIN_CODES
+
     return Parts(viv, gate, memory, reminders, audio, speaker, watcher, app, settings,
-                 RoutineClock(settings, viv.notify), ctx.watch)
+                 RoutineClock(settings, viv.notify), ctx.watch,
+                 RelationsClock(relations, settings, private_notice, replied, raining))
 
 
 def welcome(parts: Parts, delay: float = 6.0) -> None:
@@ -239,10 +277,12 @@ def run_full(cfg: dict, show: bool, briefing: bool = False) -> int:
         print("Sem cadastro de voz: ações perigosas só são confirmadas pelo clique na HUD. "
               "Para cadastrar: .venv\\Scripts\\python.exe scripts\\enroll_voice.py")
     threading.Thread(target=parts.watcher.prepare, daemon=True, name="viv-whisper").start()
+    threading.Thread(target=parts.speaker.warm, daemon=True, name="viv-voz").start()
     hotkey = Hotkey(cfg["wake"]["hotkey"], lambda: toggle(parts.viv))
     hotkey.start()
     parts.reminders.start()
     parts.routine.start()
+    parts.relations.start()
     if briefing and parts.settings.get("inicio.boas_vindas"):
         threading.Thread(target=welcome, args=(parts,), daemon=True, name="viv-boas-vindas").start()
 
@@ -263,6 +303,7 @@ def run_full(cfg: dict, show: bool, briefing: bool = False) -> int:
         hotkey.stop()
         parts.reminders.stop()
         parts.routine.stop()
+        parts.relations.stop()
         parts.watch.stop()
         parts.audio.stop()
     return 0

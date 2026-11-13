@@ -107,6 +107,9 @@ class FakeAudio:
     def recent(self, seconds=6.0):
         return np.zeros(16000, dtype=np.float32)
 
+    def take_speech(self):
+        return np.zeros(16000, dtype=np.float32)
+
     def beep(self, kind):
         self.beeps.append(kind)
 

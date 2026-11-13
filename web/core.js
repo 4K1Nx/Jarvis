@@ -151,6 +151,12 @@
     setState(next) { if (LOOK[next] && next !== state) { state = next; stateAt = performance.now(); } },
     setLevel(source, value) { if (source in levels) levels[source] = Math.max(0, Math.min(1, +value || 0)); },
     center() { return { x: cx, y: cy, r: R * 1.6 }; },
+    // cores do humor: principal, secundária e destaque; o desenho desliza até elas sozinho
+    setPalette(rose, violet, cyan) {
+      for (const [name, value] of [['rose', rose], ['violet', violet], ['cyan', cyan]]) {
+        if (/^#[0-9a-f]{6}$/i.test(value || '')) COLORS[name] = rgb(value);
+      }
+    },
   };
   window.addEventListener('resize', resize);
   resize();

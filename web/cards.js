@@ -2,7 +2,9 @@
    - Painel (esquerda): informação pedida — clima, pesquisa, tabelas, listas, visão. Um por vez, grande.
    - Avisos (direita): ações executadas e dados curtos. Somem sozinhos.
    - Confirmação (centro): ações perigosas.
-   Todo texto vindo de eventos entra por textContent; nada é interpretado como HTML. */
+   Cada cartão tem uma barrinha que encolhe até a hora de sair; o tempo pausa com o mouse em cima.
+   Todo texto vindo de eventos entra por textContent; nada é interpretado como HTML. A formatação
+   (negrito, títulos, listas, tabelas, código) é montada nó a nó a partir de marcações simples. */
 (function () {
   'use strict';
   const layer = document.getElementById('cards');
@@ -11,8 +13,8 @@
   const PANEL_KINDS = { search: 1, vision: 1, content: 1, weather: 1 };
   const PANEL_LIFE = 75000, TOAST_LIFE = 8000, TOASTS = 4;
   const ICONS = { action: '›', search: '?', vision: '◉', data: 'i', content: '≡', weather: '☼' };
-  const toasts = [];        // {el, slot, timer}
-  let panel = null;         // {el, timer}
+  const toasts = [];        // {el, slot}
+  let panel = null;         // {el}
   let confirmTimer = null;
 
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -57,35 +59,105 @@
     const index = toasts.indexOf(card);
     if (index < 0) return;
     toasts.splice(index, 1);
-    clearTimeout(card.timer);
     vanish(card.el);
   }
 
   function closePanel() {
     if (!panel) return;
-    clearTimeout(panel.timer);
     vanish(panel.el);
     panel = null;
+  }
+
+  // ---- formatação ----------------------------------------------------------
+  const INLINE = /\*\*([^*\n]+)\*\*|__([^_\n]+)__|\*([^*\s][^*\n]*)\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"')\]]+)/g;
+
+  /* Acrescenta `text` a `target` com **negrito**, *itálico*, `código` e links http(s). */
+  function inline(target, text) {
+    text = String(text == null ? '' : text);
+    let last = 0;
+    for (const m of text.matchAll(INLINE)) {
+      if (m.index > last) target.append(text.slice(last, m.index));
+      if (m[1] || m[2]) target.append(el('strong', null, m[1] || m[2]));
+      else if (m[3]) target.append(el('em', null, m[3]));
+      else if (m[4]) target.append(el('code', null, m[4]));
+      else {
+        const a = el('a', null, m[5] || m[7]);
+        a.href = m[6] || m[7]; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        target.append(a);
+      }
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) target.append(text.slice(last));
+    return target;
+  }
+
+  const SEPARATOR = /^[\s|:-]+$/, ITEM = /^\s*(?:[-*•]|\d+[.)])\s+/;
+  const cells = row => row.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
+
+  function table(rows) {
+    const node = el('table');
+    rows.filter(row => !SEPARATOR.test(row)).forEach((row, i) => {
+      const tr = el('tr');
+      cells(row).forEach(cell => tr.append(inline(el(i ? 'td' : 'th'), cell)));
+      node.append(tr);
+    });
+    return node;
+  }
+
+  function list(rows, ordered) {
+    const node = el(ordered ? 'ol' : 'ul');
+    rows.forEach(row => {
+      const text = row.replace(ITEM, ''), todo = /^\[( |x|X)\]\s+/.exec(text);
+      const li = inline(el('li'), todo ? text.slice(todo[0].length) : text);
+      if (todo) { li.className = 'todo'; li.dataset.done = todo[1] === ' ' ? 'false' : 'true'; }
+      node.append(li);
+    });
+    return node;
+  }
+
+  /* Texto com marcações simples vira títulos, listas, tabelas, citações e blocos de código. */
+  function rich(body) {
+    const box = el('div', 'md'), lines = String(body || '').replace(/\r/g, '').split('\n');
+    let i = 0;
+    const take = test => { const rows = []; while (i < lines.length && test(lines[i])) rows.push(lines[i++]); return rows; };
+    while (i < lines.length) {
+      const line = lines[i], heading = /^(#{1,4})\s+(.*)$/.exec(line.trim());
+      if (!line.trim()) { i++; continue; }
+      if (/^\s*```/.test(line)) {
+        i++;
+        const code = take(row => !/^\s*```/.test(row));
+        i++;
+        const pre = el('pre'); pre.append(el('code', null, code.join('\n'))); box.append(pre);
+      } else if (heading) {
+        box.append(inline(el('h4', 'md-h' + heading[1].length), heading[2])); i++;
+      } else if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        box.append(el('hr')); i++;
+      } else if (/^\s*>/.test(line)) {
+        const quote = el('blockquote');
+        take(row => /^\s*>/.test(row)).forEach((row, n) => { if (n) quote.append(el('br')); inline(quote, row.replace(/^\s*>\s?/, '')); });
+        box.append(quote);
+      } else if (ITEM.test(line)) {
+        const ordered = /^\s*\d/.test(line);
+        box.append(list(take(row => ITEM.test(row) && /^\s*\d/.test(row) === ordered), ordered));
+      } else if (line.includes('|') && (lines[i + 1] || '').includes('-') && SEPARATOR.test(lines[i + 1])) {
+        box.append(table(take(row => row.includes('|'))));
+      } else {
+        const p = el('p');
+        i++;
+        [line].concat(take(row => row.trim() && !/^\s*(```|#{1,4}\s|>)/.test(row) && !ITEM.test(row)))
+          .forEach((row, n) => { if (n) p.append(el('br')); inline(p, row.trim()); });
+        box.append(p);
+      }
+    }
+    return box;
   }
 
   // ---- conteúdo -----------------------------------------------------------
   function content(body, format) {
     const lines = String(body || '').split('\n').map(s => s.trim()).filter(Boolean);
-    if (format === 'lista') {
-      const ul = el('ul');
-      lines.forEach(item => ul.append(el('li', null, item.replace(/^[-*•]\s*/, ''))));
-      return ul;
-    }
-    if (format === 'tabela') {
-      const table = el('table');
-      lines.filter(row => !/^[\s|:-]+$/.test(row)).forEach((row, i) => {
-        const tr = el('tr');
-        row.replace(/^\||\|$/g, '').split('|').forEach(cell => tr.append(el(i ? 'td' : 'th', null, cell.trim())));
-        table.append(tr);
-      });
-      return table;
-    }
-    return el('p', 'card-body', body);
+    if (format === 'lista') return list(lines, false);
+    if (format === 'tabela') return table(lines);
+    return rich(body);
   }
 
   function results(list) {
@@ -134,7 +206,7 @@
     head.append(el('span', 'card-icon', event.ok === false ? '!' : ICONS[kind]), el('span', 'card-title', event.text || ''));
     node.append(head);
     if (kind === 'weather' && event.weather && typeof event.weather === 'object') node.append(weather(event.weather));
-    if (event.body) node.append(kind === 'content' ? content(event.body, event.format) : el('p', 'card-body', event.body));
+    if (event.body) node.append(kind === 'content' ? content(event.body, event.format) : inline(el('p', 'card-body'), event.body));
     if (Array.isArray(event.results) && event.results.length) node.append(results(event.results));
     if (Array.isArray(event.sources) && event.sources.length) {
       const list = el('div', 'card-sources');
@@ -154,6 +226,17 @@
   }
 
   // ---- exibição -----------------------------------------------------------
+  /* Barrinha de tempo: encolhe por `ms` e, ao zerar, chama `done`. É a própria animação que
+     marca o tempo, então pausar com o mouse em cima (no CSS) também adia a saída do cartão. */
+  function life(node, ms, done) {
+    const track = el('div', 'card-life'), fill = el('i');
+    track.setAttribute('aria-hidden', 'true');
+    fill.style.animationDuration = ms + 'ms';
+    fill.addEventListener('animationend', done);
+    track.append(fill);
+    node.append(track);
+  }
+
   function show(event) {
     const kind = ICONS[event.kind] ? event.kind : 'action';
     const node = build(event, kind);
@@ -164,8 +247,9 @@
       close.type = 'button'; close.setAttribute('aria-label', 'Fechar painel');
       close.addEventListener('click', closePanel);
       node.querySelector('.card-head').append(close);
-      panel = { el: node, timer: setTimeout(closePanel, PANEL_LIFE) };
+      panel = { el: node };
       layer.prepend(node);
+      life(node, PANEL_LIFE, () => { if (panel && panel.el === node) closePanel(); });
     } else {
       node.classList.add('toast');
       const limit = narrow() ? 3 : TOASTS;
@@ -173,13 +257,13 @@
       const used = new Set(toasts.map(t => t.slot));
       let slot = 0;
       while (used.has(slot)) slot++;
-      const card = { el: node, slot, timer: null };
+      const card = { el: node, slot };
       toasts.push(card);
       placeToast(card);
       layer.append(node);
-      card.timer = setTimeout(() => removeToast(card), TOAST_LIFE);
+      life(node, TOAST_LIFE, () => removeToast(card));
     }
-    node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
+    node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day, .md > *').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
     requestAnimationFrame(() => { node.classList.add('in'); setTimeout(drawLinks, 480); });
   }
 

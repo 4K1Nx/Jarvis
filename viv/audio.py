@@ -16,7 +16,15 @@ from viv.bus import BUS
 IN_RATE, OUT_RATE = 16000, 24000
 FRAME_SAMPLES = 320                      # 20 ms a 16 kHz
 RECENT_FRAMES = 6 * IN_RATE // FRAME_SAMPLES
-HANGOVER = 0.3                           # s em que "tocando" continua valendo após o fim do áudio
+HANGOVER = 0.6                           # s em que "tocando" continua valendo após o fim do áudio
+OPEN_FRAMES = 3                          # quadros seguidos acima do limiar (60 ms) para abrir o microfone
+HOLD = 0.6                               # s em que o microfone segue aberto depois da última fala forte
+SPEECH_RMS = 0.008                       # acima disto o quadro conta como fala do usuário
+SPEECH_FRAMES = 15 * IN_RATE // FRAME_SAMPLES   # até 15 s de fala por turno, para reconhecer a voz
+ECHO_WARMUP = 0.4                        # s iniciais de cada fala em que a Viv só mede o próprio eco
+ECHO_MARGIN = 1.6                        # o usuário precisa falar isto acima do eco medido para interromper
+ECHO_DECAY = 0.995                       # o eco medido cai devagar (metade em ~3 s) e segue o volume da caixa
+HEADPHONE_FACTOR = 0.25                 # com fones, o limiar cai para um quarto: ainda barra o vazamento
 
 
 class AudioError(RuntimeError):
@@ -45,9 +53,10 @@ def resolve_input(devices: list[dict], name: str | None) -> int | None:
 
 
 def echo_gate(rms_value: float, playing: bool, headphones: bool, threshold: float) -> bool:
-    """O quadro do microfone deve ser enviado? Sem fones, enquanto a Viv fala, só
-    passa voz acima do limiar, para o microfone não captar a própria Viv."""
-    return headphones or not playing or rms_value >= threshold
+    """O quadro tem volume de fala do usuário? Enquanto a Viv fala, só conta o que passa do
+    limiar, para o microfone não captar a própria Viv. Com fones o limiar é bem menor, mas
+    existe: fone aberto ou alto vaza som para o microfone."""
+    return not playing or rms_value >= (threshold * HEADPHONE_FACTOR if headphones else threshold)
 
 
 class AudioIO:
@@ -62,9 +71,14 @@ class AudioIO:
         self.input_name = ""
         self._in_q: queue.Queue = queue.Queue(maxsize=250)   # 5 s de folga
         self._recent: deque = deque(maxlen=RECENT_FRAMES)
+        self._speech: deque = deque(maxlen=SPEECH_FRAMES)
         self._out = bytearray()
         self._out_lock = threading.Lock()
         self._last_out = float("-inf")
+        self._loud = 0                         # quadros fortes seguidos enquanto a Viv fala
+        self._echo = 0.0                       # nível com que a voz da Viv volta pelo microfone
+        self._play_start: float | None = None  # quando a fala atual começou a tocar
+        self._open_until = float("-inf")       # até quando o microfone fica aberto durante a fala dela
         self._last_level = {"mic": 0.0, "out": 0.0}
         self._streams: list = []
 
@@ -162,7 +176,46 @@ class AudioIO:
         return np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
 
     def should_send(self, frame: bytes) -> bool:
-        return echo_gate(rms(frame), self.is_playing(), self._headphones, self._threshold)
+        """Enviar este quadro ao modelo? Fora da fala da Viv, sempre. Durante a fala dela, o
+        microfone só abre com fala sustentada (um estalo isolado não conta) e fica aberto por
+        HOLD segundos, para a frase do usuário não chegar picotada.
+
+        Sem fones, a voz da Viv volta pelo microfone e pode passar do limiar fixo: ela se ouviria
+        e se interromperia. Por isso o eco é medido — no começo de cada fala (ECHO_WARMUP), quando
+        nada abre o microfone, e depois em todo quadro que não o abre — e interromper exige falar
+        ECHO_MARGIN vezes acima dele."""
+        level = rms(frame)
+        if not self.is_playing():
+            self._loud, self._open_until, self._play_start = 0, float("-inf"), None
+            send = True
+        else:
+            now = self._clock()
+            if self._play_start is None:
+                self._play_start = now
+            warming = not self._headphones and now - self._play_start < ECHO_WARMUP
+            over = echo_gate(level, True, self._headphones, self._threshold) and level >= self._echo * ECHO_MARGIN
+            if over and not warming:
+                self._loud += 1
+                if self._loud >= OPEN_FRAMES:
+                    self._open_until = now + HOLD
+            else:
+                self._loud = 0
+                if now >= self._open_until:          # com o microfone aberto é o usuário falando, não o eco
+                    self._echo = max(level, self._echo * ECHO_DECAY)
+            send = now < self._open_until
+        if send and level >= SPEECH_RMS:
+            self._speech.append(frame)
+        return send
+
+    def take_speech(self) -> np.ndarray:
+        """Fala do usuário desde a última chamada: só os quadros enviados ao modelo e com voz,
+        sem silêncio nem a voz da Viv. É o que o reconhecimento de voz analisa."""
+        frames = []
+        while self._speech:
+            frames.append(self._speech.popleft())
+        if not frames:
+            return np.zeros(0, dtype=np.float32)
+        return np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
 
     def beep(self, kind: str) -> None:
         notes = {"wake": (660, 880), "sleep": (880, 660), "error": (220, 196)}.get(kind, (660,))

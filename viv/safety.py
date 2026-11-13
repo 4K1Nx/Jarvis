@@ -30,10 +30,23 @@ class Gate:
         self.notify, self.clock = notify, clock
         self.timeout = float(cfg.get("safety", {}).get("confirm_timeout_seconds", 30))
         self.pending: dict | None = None
+        self.mood = None                      # viv.mood.Mood, quando o humor está ligado
         self._lock = threading.RLock()
 
+    def _needs_confirmation(self, name: str) -> bool:
+        if registry.is_dangerous(name, self.cfg):
+            return True
+        # conteúdo pessoal (WhatsApp, e-mail) pedido por uma voz que não é a do dono
+        stranger = getattr(self.speaker, "stranger_present", None)
+        return registry.is_private(name) and stranger is not None and stranger()
+
     def submit(self, name: str, args: dict | None) -> str:
-        if not registry.is_dangerous(name, self.cfg):
+        self.tick()                           # uma confirmação vencida não pode travar a próxima
+        if self.mood is not None and self.mood.refuses(name):
+            self.audit.record("tool_blocked", tool=name, reason="humor")
+            return ("humor: você não está com vontade de fazer isso agora e nada foi executado. Diga isso em uma "
+                    "frase, do seu jeito. Se o usuário insistir, chame a ferramenta de novo.")
+        if not self._needs_confirmation(name):
             return registry.call(name, args, self.ctx)
         try:
             text = registry.confirm_text(name, args)      # valida o pedido antes de incomodar o usuário
@@ -64,8 +77,9 @@ class Gate:
             if self.speaker.is_owner(audio):
                 return self._resolve(True, "voz")
         enrolled = bool(getattr(self.speaker, "enrolled", False))
-        self.audit.record("confirmation_rejected", reason="voz não reconhecida" if enrolled else "sem cadastro de voz")
-        BUS.emit("confirm_hint", "Voz não reconhecida. Clique em Sim para confirmar." if enrolled
+        self.audit.record("confirmation_rejected", reason="voz não reconhecida" if enrolled else "sem cadastro de voz",
+                          score=round(float(getattr(self.speaker, "last_score", 0.0)), 3))
+        BUS.emit("confirm_hint", "Não reconheci a sua voz. Diga “sim, pode fazer” ou clique em Sim." if enrolled
                  else "Sem cadastro de voz. Clique em Sim para confirmar.")
 
     def on_click(self, accepted: bool) -> None:
@@ -77,6 +91,11 @@ class Gate:
         with self._lock:
             if self.pending is not None and self.clock() >= self.pending["expires"]:
                 self._resolve(False, "tempo esgotado")
+
+    def remaining(self) -> int:
+        """Segundos que faltam para a confirmação pendente vencer (0 sem pendência)."""
+        with self._lock:
+            return max(0, int(self.pending["expires"] - self.clock())) if self.pending else 0
 
     def _resolve(self, accepted: bool, how: str) -> None:
         action, self.pending = self.pending, None

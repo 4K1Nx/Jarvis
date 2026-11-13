@@ -197,6 +197,51 @@ body[data-state="error"] .dot { background: var(--viv-danger); box-shadow: 0 0 1
 .card-sources a { color: var(--viv-cyan); font-size: 12px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-sources a:hover, .card-sources a:focus-visible { text-decoration: underline; }
 .card-shot { display: block; width: 100%; margin-top: 8px; border-radius: 8px; border: 1px solid var(--viv-line); }
+
+/* ---- barrinha de tempo: encolhe até o cartão sair; pausa com o mouse em cima ---- */
+.card { --pad-x: 14px; --pad-b: 13px; }
+.card.panel { --pad-x: 18px; --pad-b: 18px; }
+.card-life {
+  position: sticky; bottom: calc(-1 * var(--pad-b)); flex: none; height: 3px; overflow: hidden;
+  margin: auto calc(-1 * var(--pad-x)) calc(-1 * var(--pad-b)); background: rgba(255, 255, 255, .07);
+}
+.card-life i {
+  display: block; height: 100%; transform-origin: left;
+  background: linear-gradient(90deg, var(--accent, var(--viv-violet)), var(--viv-violet));
+  box-shadow: 0 0 10px var(--accent, var(--viv-violet));
+  animation: life linear forwards paused;
+}
+.card.in .card-life i { animation-play-state: running; }
+.card:hover .card-life i, .card:focus-within .card-life i { animation-play-state: paused; opacity: .55; }
+@keyframes life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---- texto formatado ---- */
+.card strong { color: #fff; font-weight: 650; }
+.card em { color: var(--viv-ink); }
+.card code { font-family: "Cascadia Code", Consolas, monospace; font-size: .92em; padding: 1px 5px; border-radius: 5px;
+  color: var(--viv-cyan); background: rgba(95, 230, 255, .1); overflow-wrap: anywhere; }
+.card-body a, .md a, .card td a, .card li a { color: var(--viv-cyan); text-decoration: none; overflow-wrap: anywhere; }
+.card-body a:hover, .md a:hover, .card td a:hover, .card li a:hover { text-decoration: underline; }
+.md { display: flex; flex-direction: column; gap: 9px; font-size: 13.5px; line-height: 1.5; color: var(--viv-ink); overflow-wrap: anywhere; }
+.md p, .md h4, .md ul, .md ol, .md pre, .md blockquote, .md table { margin: 0; }
+.md h4 { font-weight: 650; line-height: 1.3; }
+.md .md-h1 { font-size: 17px; padding-bottom: 6px; border-bottom: 1px solid var(--viv-line); }
+.md .md-h2 { font-size: 14.5px; color: var(--viv-rose); margin-top: 4px; }
+.md .md-h3, .md .md-h4 { font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--viv-cyan); margin-top: 4px; }
+.md ul, .md ol { padding-left: 20px; max-height: none; font-size: inherit; }
+.card.panel .md ul { columns: 1; }
+.md li::marker { color: var(--viv-rose); }
+.md li + li { margin-top: 2px; }
+.card li.todo { list-style: none; position: relative; }
+.card li.todo::before { content: ""; position: absolute; left: -18px; top: .28em; width: 11px; height: 11px; border-radius: 3px; border: 1px solid var(--viv-line); }
+.card li.todo[data-done="true"] { color: var(--viv-dim); text-decoration: line-through; }
+.card li.todo[data-done="true"]::before { background: var(--viv-rose); border-color: var(--viv-rose); }
+.md pre { padding: 10px 12px; border-radius: 10px; overflow: auto; background: rgba(0, 0, 0, .35); border: 1px solid rgba(155, 107, 255, .2); scrollbar-width: thin; }
+.md pre code { padding: 0; background: none; color: var(--viv-ink); font-size: 12px; white-space: pre; }
+.md blockquote { padding: 8px 12px; border-left: 3px solid var(--viv-cyan); border-radius: 0 8px 8px 0; background: rgba(95, 230, 255, .07); color: var(--viv-ink); }
+.md hr { width: 100%; margin: 2px 0; border: 0; border-top: 1px solid var(--viv-line); }
+.card.panel.in .md > * { animation: reveal .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(.34s + var(--i, 0) * 45ms); }
+
 .card[data-kind="action"] { --accent: var(--viv-cyan); }
 .card[data-kind="search"] { --accent: var(--viv-violet); }
 .card[data-kind="vision"] { --accent: var(--viv-rose); }
@@ -246,6 +291,69 @@ body[data-state="error"] .dot { background: var(--viv-danger); box-shadow: 0 0 1
 .hint { margin: 0; font-size: 12px; color: var(--viv-dim); text-align: center; }
 body:not([data-state="sleeping"]) .hint { visibility: hidden; }
 
+/* ---- WhatsApp: destaque, painel geral e conversa aberta ---- */
+#wa { position: fixed; left: 26px; top: 84px; bottom: 210px; z-index: 3; width: min(400px, calc(50vw - 190px)); display: flex; align-items: center; pointer-events: none; }
+.wa-card {
+  pointer-events: auto; width: 100%; max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--viv-panel); border: 1px solid var(--viv-line); border-radius: 18px; backdrop-filter: blur(14px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55), 0 0 40px rgba(155, 107, 255, .12);
+  opacity: 0; transform: translateX(-28px) scale(.96); transform-origin: 34px 34px;
+  transition: opacity .38s ease, transform .55s cubic-bezier(.16, 1, .3, 1);
+}
+.wa-card.in { opacity: 1; transform: none; }
+.wa-card.out { opacity: 0; transform: translateX(-18px) scale(.97); transition-duration: .3s; }
+/* a conversa "desdobra" a partir da foto do contato */
+.wa-chat { transform: scale(.2); clip-path: circle(8% at 34px 34px); transition: opacity .3s ease, transform .6s cubic-bezier(.16, 1, .3, 1), clip-path .7s cubic-bezier(.16, 1, .3, 1); }
+.wa-chat.in { clip-path: circle(150% at 34px 34px); }
+.wa-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(155, 107, 255, .16); }
+.wa-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.wa-who b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-who small { font-size: 11.5px; color: var(--viv-rose); letter-spacing: .04em; }
+.wa-avatar, .wa-logo { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; font-size: 16px; font-weight: 600;
+  color: var(--viv-ink); background: linear-gradient(135deg, rgba(95, 230, 255, .35), rgba(155, 107, 255, .45), rgba(255, 95, 168, .4)); border: 1px solid var(--viv-line); }
+.wa-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.wa-logo { font-size: 20px; }
+.wa-close { font: inherit; font-size: 20px; line-height: 1; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; color: var(--viv-dim); background: transparent; border: 1px solid transparent; }
+.wa-close:hover, .wa-close:focus-visible { color: var(--viv-ink); border-color: var(--viv-line); outline: none; }
+.wa-bubble { position: relative; max-width: 84%; padding: 9px 12px 7px; border-radius: 14px; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 4px; }
+.wa-bubble.in { align-self: flex-start; background: rgba(255, 255, 255, .07); border-top-left-radius: 4px; }
+.wa-bubble.out { align-self: flex-end; background: linear-gradient(135deg, rgba(155, 107, 255, .34), rgba(255, 95, 168, .26)); border-top-right-radius: 4px; }
+.wa-bubble time { align-self: flex-end; font-size: 10.5px; color: var(--viv-dim); font-variant-numeric: tabular-nums; }
+.wa-author { font-size: 11.5px; font-weight: 600; color: var(--viv-cyan); }
+.wa-photo { display: block; max-width: 100%; max-height: 220px; border-radius: 10px; object-fit: cover; }
+.wa-audio { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12.5px; background: rgba(95, 230, 255, .12); color: var(--viv-cyan); align-self: flex-start; }
+.wa-muted { color: var(--viv-dim); font-style: italic; }
+.wa-spot > .wa-bubble { margin: 14px 16px 16px; max-width: none; font-size: 15px; }
+.wa-thread { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 16px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--viv-line) transparent; }
+.wa-card.in .wa-thread .wa-bubble, .wa-card.in .wa-row { animation: reveal .45s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(.25s + var(--i, 0) * 35ms); }
+.wa-rows { list-style: none; margin: 0; padding: 6px 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--viv-line) transparent; }
+.wa-row { display: flex; align-items: center; gap: 12px; padding: 9px 16px; }
+.wa-row[data-pending="true"] { background: linear-gradient(90deg, rgba(255, 95, 168, .10), transparent 70%); }
+.wa-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.wa-row-text b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-row-text span { font-size: 12.5px; color: var(--viv-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wa-row[data-pending="true"] .wa-row-text span { color: var(--viv-ink); }
+.wa-badge { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; font-weight: 700; color: #1a0714; background: var(--viv-rose); box-shadow: 0 0 14px rgba(255, 95, 168, .5); }
+.wa-foot { margin: 0; padding: 10px 16px 14px; font-size: 12px; color: var(--viv-dim); border-top: 1px solid rgba(155, 107, 255, .12); }
+@media (max-width: 760px) { #wa { left: 12px; right: 12px; width: auto; top: 64px; bottom: 200px; align-items: flex-start; } }
+@media (prefers-reduced-motion: reduce) {
+  .wa-card, .wa-chat { transition: opacity .2s ease; transform: none; clip-path: none; }
+  .wa-card.in .wa-thread .wa-bubble, .wa-card.in .wa-row { animation: none; }
+}
+
+/* ---- humor, quem fala e progresso ---- */
+.chip { font-size: 11px; letter-spacing: .12em; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--viv-line); color: var(--viv-dim); transition: border-color .8s, color .8s; }
+#mood { color: var(--viv-rose); }
+#who[data-known="false"] { color: var(--viv-danger); border-color: rgba(255, 77, 94, .45); }
+#progress { width: min(360px, 100%); display: flex; flex-direction: column; gap: 6px; align-items: center; animation: reveal .4s cubic-bezier(.16, 1, .3, 1) both; }
+#progress[hidden] { display: none; }
+#progress-label { font-size: 12px; letter-spacing: .06em; color: var(--viv-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-track { width: 100%; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .09); overflow: hidden; }
+.progress-track i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(.03); background: linear-gradient(90deg, var(--viv-cyan), var(--viv-rose)); transition: transform .6s ease; }
+#progress.unknown .progress-track i { width: 35%; transform: none; transition: none; animation: progress-slide 1.6s ease-in-out infinite; }
+@keyframes progress-slide { from { margin-left: -35%; } to { margin-left: 100%; } }
+@media (prefers-reduced-motion: reduce) { #progress.unknown .progress-track i { animation: none; width: 100%; opacity: .5; } }
+
 /* ---- telas estreitas: cartões viram uma pilha ---- */
 @media (max-width: 760px) {
   .top { padding: 14px 16px; flex-wrap: wrap; }
@@ -260,7 +368,7 @@ body:not([data-state="sleeping"]) .hint { visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   .card.in, .card.out, .card.panel.in > *, .card.panel.in .result, .card.panel.in li, .card.panel.in tr,
-  .card.panel.in .weather-stat, .card.panel.in .weather-day, .confirm, #links line, #links circle,
+  .card.panel.in .weather-stat, .card.panel.in .weather-day, .card.panel.in .md > *, .confirm, #links line, #links circle,
   #settings.open .setting, #settings.open .routine-row { animation: none !important; }
   .card.panel::after { display: none; }
   #settings { transition: opacity .2s; transform: none; }

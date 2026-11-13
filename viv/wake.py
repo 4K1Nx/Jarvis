@@ -42,18 +42,34 @@ class ClapDetector:
         return False
 
 
+CALL_WORDS = ("ei", "hey", "ey", "oi", "ola", "alo", "acorda", "acorde")
+NOT_THE_NAME = {"viver", "vivem", "vivia", "vivido", "vivida", "vibra", "vibe"}
+
+
+def _fold(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
 def matches_name(text: str, aliases: list[str]) -> bool:
-    """O texto contém um dos apelidos como palavra inteira?"""
-    def fold(s):
-        s = unicodedata.normalize("NFKD", s.casefold())
-        return "".join(c for c in s if not unicodedata.combining(c))
-    words = set(re.findall(r"[a-z]+", fold(text)))
-    return bool(words & {fold(a) for a in aliases})
+    """O nome foi dito? Vale um apelido como palavra inteira ("Viv", "Vivi") ou, depois de
+    uma palavra de chamada ("ei", "oi", "acorda"), algo que só soa como o nome: o Whisper
+    costuma escrever "Ei, Viv" como "ei vif", "hey viva" ou "eivive"."""
+    words = re.findall(r"[a-z]+", _fold(text))
+    if set(words) & {_fold(a) for a in aliases}:
+        return True
+    near = re.compile(r"(?:vi[vfb]|bi[vb])[a-z]{0,2}")
+    for previous, word in zip(words, words[1:]):
+        if previous in CALL_WORDS and near.fullmatch(word) and word not in NOT_THE_NAME:
+            return True
+    return any(w.startswith(c) and near.fullmatch(w[len(c):]) and w[len(c):] not in NOT_THE_NAME
+               for w in words for c in CALL_WORDS[:4])
 
 
 class NameSpotter:
     """Recorta trechos curtos de fala por energia e pergunta ao transcritor se o nome foi dito."""
-    START_FRAMES, END_FRAMES, MIN_VOICED, PRE_ROLL = 3, 15, 15, 5
+    # MIN_VOICED em 8 quadros (160 ms): um "Viv" sozinho dura uns 250 ms e era descartado com 15.
+    START_FRAMES, END_FRAMES, MIN_VOICED, PRE_ROLL = 3, 15, 8, 10
 
     def __init__(self, aliases: list[str], transcribe: Callable[[np.ndarray], str], max_seconds: float = 3.0):
         self.aliases, self.transcribe = aliases, transcribe
@@ -62,13 +78,14 @@ class NameSpotter:
 
     def reset(self) -> None:
         self._floor = 0.003
+        self.heard: bytes = b""          # trecho em que o nome foi reconhecido
         self._pre: deque = deque(maxlen=self.PRE_ROLL)
         self._segment: list[bytes] | None = None
         self._run = self._quiet = self._voiced = 0
 
     def feed(self, frame: bytes, now: float) -> bool:
         level = rms(frame)
-        loud = level > max(0.012, self._floor * 3.0)
+        loud = level > max(0.009, self._floor * 2.5)
         if self._segment is None:
             self._pre.append(frame)
             self._run = self._run + 1 if loud else 0
@@ -89,9 +106,12 @@ class NameSpotter:
             return False
         audio = np.frombuffer(b"".join(segment), dtype=np.int16).astype(np.float32) / 32768.0
         try:
-            return matches_name(self.transcribe(audio), self.aliases)
+            found = matches_name(self.transcribe(audio), self.aliases)
         except Exception:
             return False
+        if found:
+            self.heard = b"".join(segment)
+        return found
 
 
 def whisper_transcriber(model_name: str = "tiny") -> Callable[[np.ndarray], str]:
@@ -100,7 +120,8 @@ def whisper_transcriber(model_name: str = "tiny") -> Callable[[np.ndarray], str]
 
     def transcribe(audio: np.ndarray) -> str:
         segments, _ = model.transcribe(audio, language="pt", beam_size=1, vad_filter=False,
-                                       condition_on_previous_text=False, initial_prompt="Ei, Viv.")
+                                       condition_on_previous_text=False, initial_prompt="Ei, Viv.",
+                                       hotwords="Viv")
         return " ".join(s.text for s in segments)
     return transcribe
 
@@ -136,6 +157,7 @@ class WakeWatcher:
         self.clap_on = bool(w.get("clap_enabled", True))
         self._name_enabled = bool(w.get("name_enabled", True))
         self.name_on = self._name_enabled
+        self.heard: bytes = b""          # áudio da última chamada pelo nome, entregue uma vez à conversa
         self.name: NameSpotter | None = None
         if self._name_enabled and transcribe is not None:
             self.name = NameSpotter(self._aliases, transcribe)
@@ -168,7 +190,14 @@ class WakeWatcher:
         now = self._frames * FRAME_SECONDS
         if self.clap_on and self.clap.feed(frame, now):
             self.reset()
+            self.heard = b""
             return self.on_wake("clap")
         if self.name_on and self.name is not None and self.name.feed(frame, now):
+            self.heard = self.name.heard
             self.reset()
             return self.on_wake("name")
+
+    def take_heard(self) -> bytes:
+        """Áudio da chamada ("Ei, Viv, que horas são?"), para a conversa começar por ele."""
+        heard, self.heard = self.heard, b""
+        return heard

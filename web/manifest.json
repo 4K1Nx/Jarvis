@@ -1,0 +1,12 @@
+{
+  "name": "Viv",
+  "short_name": "Viv",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0714",
+  "theme_color": "#0a0714",
+  "icons": [
+    {"src": "/static/icon.png", "sizes": "256x256", "type": "image/png"},
+    {"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

@@ -10,7 +10,7 @@ from viv.errors import ERRORS
 
 _REG: dict[str, dict] = {}
 _MODULES = ("desktop", "apps", "system", "optimize", "uninstall", "files", "browser", "web", "weather", "vision", "mail",
-            "hud", "assistant", "settings_tools")
+            "hud", "assistant", "settings_tools", "code", "docs", "research", "extras", "social", "whatsapp", "relacoes")
 
 
 @dataclass
@@ -22,17 +22,23 @@ class Context:
     settings: Any = None
     watch: Any = None
     mail_cache: Any = None
+    people: Any = None
+    speaker: Any = None
+    mood: Any = None
+    relations: Any = None
 
 
 def tool(name: str, description: str, params: dict, dangerous: bool = False,
-         title: str | None = None, card: bool = True, confirm=None):
+         title: str | None = None, card: bool = True, confirm=None, private: bool = False):
     """Registra uma ferramenta. `title` é o rótulo do cartão na HUD; `card=False`
     quando a própria ferramenta emite um cartão específico. `confirm(args)` devolve o texto do
-    cartão de confirmação de uma ação perigosa e pode levantar erro se o pedido for inválido."""
+    cartão de confirmação de uma ação perigosa e pode levantar erro se o pedido for inválido.
+    `private`: expõe conteúdo pessoal; pede confirmação quando quem fala não é o dono."""
     def deco(fn):
         props = {k: {a: b for a, b in v.items() if a != "required"} for k, v in params.items()}
         _REG[name] = {
             "fn": fn, "dangerous": dangerous, "title": title or name, "card": card, "confirm": confirm,
+            "private": private,
             "declaration": {"name": name, "description": description, "parameters": {
                 "type": "object", "properties": props,
                 "required": [k for k, v in params.items() if v.get("required", True)]}},
@@ -47,6 +53,17 @@ def declarations() -> list[dict]:
 
 def is_dangerous(name: str, cfg: dict) -> bool:
     return name in cfg.get("safety", {}).get("dangerous", []) or _REG.get(name, {}).get("dangerous", False)
+
+
+def is_private(name: str) -> bool:
+    return _REG.get(name, {}).get("private", False)
+
+
+def progress(label: str, value: float | None = None) -> None:
+    """Etapa atual de uma tarefa demorada, para a barra de progresso da HUD. `value` de 0 a 1;
+    sem valor, a barra só indica atividade."""
+    BUS.emit("progress", str(label)[:120], value=None if value is None else max(0.0, min(1.0, float(value))),
+             done=False)
 
 
 def describe(name: str, args: dict | None) -> str:
@@ -70,12 +87,15 @@ def call(name: str, args: dict | None, ctx: Context) -> str:
         args = {}
     if not isinstance(args, dict):
         return "erro: argumentos inválidos"
+    progress(entry["title"])          # a HUD só mostra a barra se a tarefa passar de um instante
     try:
         result = str(entry["fn"](ctx=ctx, **args))
     except Exception as exc:  # o modelo recebe o erro como texto e explica ao usuário
         BUS.emit("card", entry["title"], kind="action", body=str(exc)[:300], ok=False)
         ERRORS.record(name, f"{type(exc).__name__}: {exc}")
         return f"erro: {exc}"
+    finally:
+        BUS.emit("progress", "", value=None, done=True)
     if entry["card"]:
         BUS.emit("card", describe(name, args), kind="action", body=result[:300], ok=True)
     return result

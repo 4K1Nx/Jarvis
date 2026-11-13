@@ -203,7 +203,7 @@ async def test_missing_key_does_not_retry(env):
 async def test_quota_error_warns_and_sleeps(env):
     env.viv.wake("button")
     await until(lambda: env.viv.state == State.SLEEPING and env.cards())
-    assert len(env.connect.configs) == 1 and env.audio.beeps == ["error"]
+    assert len(env.connect.configs) == 1 and env.audio.beeps == ["wake", "error"]
     assert any("Cota do Gemini atingida" in c[1] + c[2].get("body", "") for c in env.cards())
     assert env.gaps.codes == ["gemini_quota"]
 

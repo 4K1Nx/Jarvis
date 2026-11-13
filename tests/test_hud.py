@@ -261,3 +261,140 @@ def test_reduced_motion_disables_card_animations(site, browser):
 def test_confirm_without_voice_enrollment_tells_user_to_click(page):
     emit(page, channel="confirm", text="Limpar o PC", name="system_limpeza", args={}, seconds=30, voice=False)
     assert "Clique em Sim" in page.inner_text(".confirm") and "Limpar o PC" in page.inner_text(".confirm")
+
+
+def test_cards_show_a_timer_bar_that_dismisses_them_and_pauses_on_hover(page):
+    page.evaluate("window.VivCards.show({text: 'Rápido', kind: 'action', body: 'ok', ok: true})")
+    bar = page.locator(".card.toast .card-life i")
+    assert bar.count() == 1 and bar.evaluate("n => getComputedStyle(n).animationName") == "life"
+    assert bar.evaluate("n => n.style.animationDuration") == "8000ms"
+    page.wait_for_timeout(700)
+    page.hover(".card.toast")
+    assert bar.evaluate("n => getComputedStyle(n).animationPlayState") == "paused"
+    first = bar.evaluate("n => n.getBoundingClientRect().width")
+    assert first < page.locator(".card.toast .card-life").bounding_box()["width"] - 5   # já encolheu um pouco
+    page.wait_for_timeout(400)
+    assert abs(bar.evaluate("n => n.getBoundingClientRect().width") - first) < 1      # parado enquanto o mouse está em cima
+    page.mouse.move(640, 700)
+    assert bar.evaluate("n => getComputedStyle(n).animationPlayState") == "running"
+    bar.evaluate("n => { n.style.animationDuration = '300ms'; }")
+    page.wait_for_timeout(1200)
+    assert page.locator(".card.toast").count() == 0                                    # o fim da barra tira o cartão
+
+
+def test_panel_has_timer_bar_pinned_to_its_bottom_edge(page):
+    emit(page, channel="card", text="Longo", kind="content", body="linha\n\n" * 80, ok=True)
+    page.wait_for_timeout(900)
+    panel = page.locator(".card.panel").bounding_box()
+    life = page.locator(".card.panel .card-life").bounding_box()
+    assert page.locator(".card.panel .card-life i").evaluate("n => n.style.animationDuration") == "75000ms"
+    assert abs((life["y"] + life["height"]) - (panel["y"] + panel["height"])) <= 2      # visível mesmo com rolagem
+
+
+def test_text_panel_formats_markdown_without_parsing_html(page):
+    body = ("# Título\n## Seção\nTexto com **negrito**, *itálico*, `código` e [link](https://example.com/a) "
+            "e [ruim](javascript:alert(1)).\n\n- um\n- [x] feito\n- [ ] a fazer\n\n1. primeiro\n2. segundo\n\n"
+            "> destaque\n\nNome | Valor\n--- | ---\nA | **1**\n\n```\nprint('<b>oi</b>')\n```\n<img src=x onerror=window.__xss=1>")
+    emit(page, channel="card", text="Formatado", kind="content", body=body, ok=True)
+    md = page.locator(".card.panel .md")
+    assert md.locator("h4.md-h1").inner_text() == "Título" and md.locator("h4.md-h2").inner_text() == "Seção"
+    assert md.locator("p strong").first.inner_text() == "negrito" and md.locator("p em").inner_text() == "itálico"
+    assert md.locator("p code").inner_text() == "código"
+    links = md.locator("a")
+    assert links.count() == 1 and links.first.get_attribute("href") == "https://example.com/a"
+    assert md.locator("ul li").count() == 3 and md.locator("li.todo[data-done='true']").inner_text() == "feito"
+    assert md.locator("ol li").count() == 2 and md.locator("blockquote").inner_text() == "destaque"
+    assert md.locator("table tr").count() == 2 and md.locator("td strong").inner_text() == "1"
+    assert md.locator("pre code").inner_text() == "print('<b>oi</b>')"
+    assert page.locator(".card img, .card b").count() == 0 and page.evaluate("window.__xss") is None
+    assert page.errors == []
+
+
+def test_toast_body_gets_inline_formatting_only(page):
+    emit(page, channel="card", text="Ação", kind="action", body="salvo em `C:/x.txt` com **sucesso**", ok=True)
+    assert page.locator(".card.toast .card-body code").inner_text() == "C:/x.txt"
+    assert page.locator(".card.toast .card-body strong").inner_text() == "sucesso"
+
+
+def test_progress_bar_shows_only_for_tasks_that_take_a_while(page):
+    emit(page, channel="progress", text="Abrindo aplicativo", value=None, done=False)
+    emit(page, channel="progress", text="", value=None, done=True)
+    page.wait_for_timeout(1100)
+    assert page.is_hidden("#progress"), "ação rápida não pode piscar a barra"
+    emit(page, channel="progress", text="Pesquisa profunda", value=None, done=False)
+    emit(page, channel="progress", text="Lendo a fonte 2 de 4", value=0.5, done=False)
+    page.wait_for_timeout(1100)
+    assert page.is_visible("#progress") and page.inner_text("#progress-label") == "Lendo a fonte 2 de 4"
+    assert "0.5" in page.evaluate("document.getElementById('progress-fill').style.transform")
+    box = page.locator("#progress").bounding_box()
+    assert box["height"] < 40 and box["y"] > 400, "discreta, junto ao rodapé"
+    emit(page, channel="progress", text="", value=None, done=True)
+    assert page.is_hidden("#progress")
+
+
+def test_mood_recolors_the_hud_and_shows_its_name(page):
+    emit(page, channel="mood", text="Irritada", name="irritada", palette=["#ff5a4d", "#c23b6b", "#ff9a4d"], enabled=True)
+    assert page.text_content("#mood") == "Irritada" and page.is_visible("#mood")
+    assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--viv-rose').trim()") == "#ff5a4d"
+    emit(page, channel="mood", text="Serena", name="serena", palette=["#ff5fa8", "javascript:1", "#5fe6ff"], enabled=False)
+    assert page.is_hidden("#mood")
+    assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--viv-rose').trim()") == "#ff5a4d", \
+        "paleta inválida é ignorada"
+    assert page.errors == []
+
+
+def test_speaker_chip_names_who_is_talking_and_clears_on_sleep(page):
+    emit(page, channel="speaker", text="Gabriel", known=True, owner=True)
+    assert page.text_content("#who") == "Gabriel"
+    emit(page, channel="speaker", text="", known=False, owner=False)
+    assert page.text_content("#who") == "voz não reconhecida" and page.get_attribute("#who", "data-known") == "false"
+    emit(page, channel="state", state="sleeping")
+    assert page.is_hidden("#who")
+
+
+CHATS = [{"name": "Maria Silva", "label": "Mãe", "last": "Chegou bem, filho?", "unread": 2, "photo": ""},
+         {"name": "Carlos Souza", "label": "o chefe", "last": "Reunião às 9", "unread": 1, "photo": "javascript:alert(1)"},
+         {"name": "Grupo da Família", "label": "Grupo da Família", "last": "foto", "unread": 0, "photo": ""}]
+
+
+def test_whatsapp_spotlights_each_person_as_viv_mentions_them_then_shows_everything(page):
+    emit(page, channel="whatsapp", text="WhatsApp", mode="lista", chats=CHATS)
+    emit(page, channel="state", state="speaking")
+    assert page.locator(".wa-card").count() == 0, "nada aparece antes de ela falar de alguém"
+    emit(page, channel="transcript", text="Sua mãe perguntou se você chegou bem.", role="viv", final=False)
+    page.wait_for_selector(".wa-spot.in")
+    assert "Mãe" in page.text_content(".wa-spot") and "Chegou bem, filho?" in page.text_content(".wa-spot")
+    assert "2 mensagens novas" in page.text_content(".wa-spot") and "Reunião" not in page.text_content("#wa")
+    emit(page, channel="transcript", text="Sua mãe perguntou se você chegou bem. E o chefe marcou reunião às nove.", role="viv", final=False)
+    page.wait_for_timeout(700)
+    assert page.locator(".wa-spot.in").count() == 1 and "o chefe" in page.text_content(".wa-spot.in")
+    emit(page, channel="state", state="listening")
+    page.wait_for_selector(".wa-list.in")
+    page.wait_for_timeout(600)
+    assert page.locator(".wa-row").count() == 3 and page.locator('.wa-row[data-pending="true"]').count() == 2
+    assert "2 conversas pendentes" in page.text_content(".wa-list") and page.locator(".wa-badge").count() == 2
+    assert page.locator("#wa img").count() == 0, "endereço de foto que não é https do WhatsApp é ignorado"
+    page.click(".wa-close")
+    page.wait_for_timeout(600)
+    assert page.locator(".wa-card").count() == 0 and page.errors == []
+
+
+def test_whatsapp_chat_opens_with_bubbles_photos_and_audio_and_never_parses_html(page):
+    pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    messages = [{"out": False, "autor": "Maria Silva", "hora": "14:02", "texto": "<img src=x onerror=window.__wa=1>", "audio": False, "imagem": ""},
+                {"out": False, "autor": "Maria Silva", "hora": "14:03", "texto": "", "audio": True, "imagem": ""},
+                {"out": False, "autor": "Maria Silva", "hora": "14:04", "texto": "olha a foto", "audio": False, "imagem": pixel},
+                {"out": False, "autor": "Maria Silva", "hora": "14:05", "texto": "outra", "audio": False, "imagem": "https://evil.example/x.png"},
+                {"out": True, "autor": "Você", "hora": "14:06", "texto": "Tudo certo!", "audio": False, "imagem": ""}]
+    emit(page, channel="whatsapp", text="Mãe", mode="chat", contact="Maria Silva", messages=messages)
+    page.wait_for_selector(".wa-chat.in")
+    page.wait_for_timeout(900)
+    assert page.locator(".wa-bubble.in").count() == 4 and page.locator(".wa-bubble.out").count() == 1
+    assert page.locator(".wa-photo").count() == 1 and page.locator(".wa-audio").count() == 1
+    assert page.evaluate("window.__wa") is None and "<img src=x" in page.text_content(".wa-thread")
+    assert page.text_content(".wa-chat .wa-who b") == "Mãe" and "14:06" in page.text_content(".wa-bubble.out")
+    box, core = page.locator(".wa-chat").bounding_box(), page.evaluate("window.VivCore.center()")
+    assert box["x"] + box["width"] < core["x"] - core["r"] * .6, "a conversa não cobre o núcleo"
+    emit(page, channel="state", state="sleeping")
+    page.wait_for_timeout(600)
+    assert page.locator(".wa-card").count() == 0 and page.errors == []

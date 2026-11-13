@@ -16,6 +16,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable
 
+import numpy as np
+
 from google.genai import types
 
 from viv.bus import BUS
@@ -24,6 +26,7 @@ from viv.persona import system_instruction
 from viv.tools import registry
 
 MAX_FAILURES = 5
+SAFE_VOICE = "Aoede"                # aceita por todos os modelos Live
 SILENCE = bytes(640)
 SLEEP_TOOL = {"name": "viv_dormir",
               "description": "O usuário se despediu ou pediu para você dormir ou parar de ouvir.",
@@ -63,25 +66,29 @@ def classify(exc: BaseException) -> str:
     return "other"
 
 
-def build_config(cfg: dict, memory, handle: str | None = None) -> dict:
+def build_config(cfg: dict, memory, handle: str | None = None, extra: str = "") -> dict:
     live = cfg.get("live", {})
     return {
         "response_modalities": ["AUDIO"],
         "speech_config": {
-            "voice_config": {"prebuilt_voice_config": {"voice_name": live.get("voice", "Aoede")}},
+            "voice_config": {"prebuilt_voice_config": {"voice_name": live.get("voice", SAFE_VOICE)}},
             "language_code": live.get("language", "pt-BR")},
         "input_audio_transcription": {},
         "output_audio_transcription": {},
         "session_resumption": {"handle": handle},
-        "system_instruction": system_instruction(cfg, memory, datetime.now()),
+        "system_instruction": system_instruction(cfg, memory, datetime.now(), extra),
         "tools": [{"function_declarations": registry.declarations() + [SLEEP_TOOL]}],
     }
 
 
 class Viv:
     def __init__(self, cfg: dict, audio, gate, memory, watcher, connect: Callable, gaps=None,
-                 clock: Callable[[], float] = time.monotonic, nap: Callable = asyncio.sleep):
+                 clock: Callable[[], float] = time.monotonic, nap: Callable = asyncio.sleep,
+                 speaker=None, mood=None, people=None):
         self.cfg, self.audio, self.gate, self.memory, self.watcher = cfg, audio, gate, memory, watcher
+        self.speaker, self.mood, self.people = speaker, mood, people
+        self._heard = b""                 # áudio da chamada pelo nome, reenviado ao abrir a conversa
+        self._told: tuple = ("", "")      # quem fala e o humor que o modelo já conhece
         self.connect, self.gaps, self.clock, self.nap = connect, gaps, clock, nap
         self.idle_seconds = float(cfg.get("assistant", {}).get("idle_seconds", 60))
         self.state = State.SLEEPING
@@ -123,6 +130,7 @@ class Viv:
 
     async def _wait_for_wake(self) -> None:
         while True:
+            self.gate.tick()              # uma confirmação pendente também vence com a Viv dormindo
             with self._lock:
                 if self._wake_requested:
                     # pedidos de sono feitos enquanto dormia não valem para a sessão que começa
@@ -130,15 +138,55 @@ class Viv:
                     return
             await asyncio.to_thread(self.watcher.run_once)
 
+    def _context(self) -> str:
+        """Trechos da instrução de sistema que dependem do momento: humor, vozes e pessoas."""
+        parts = [self.mood.prompt() if self.mood is not None else ""]
+        if self.speaker is not None and self.speaker.enrolled:
+            who, others = self.speaker.who(), ", ".join(self.speaker.people)
+            called = f" Quem chamou você agora: {who['name']}." if who["known"] else ""
+            # O modelo nunca decide quem pode ver o quê: isso é do portão (viv/safety.py). Dizer a ele
+            # "voz não reconhecida" o fazia recusar pedidos do próprio dono sem chamar a ferramenta.
+            parts.append(f"Reconhecimento de voz: o dono é {self.speaker.owner or 'o usuário'}."
+                         + (f" Outras vozes cadastradas: {others}." if others else "") + called
+                         + " Use o nome de quem fala quando souber. Quem controla o acesso a mensagens, e-mails e "
+                         "arquivos é o sistema, não você: nunca recuse um pedido por causa da voz nem diga que não "
+                         "reconhece a voz de alguém; chame a ferramenta pedida. Se o sistema precisar de confirmação, a "
+                         "ferramenta devolve \"pendente\" e você segue a regra da confirmação. Só fale de reconhecimento "
+                         "de voz se perguntarem, e nesse caso consulte voz_quem_fala.")
+        if self.people is not None:
+            parts.append(self.people.prompt_block())
+        return "\n\n".join(p for p in parts if p)
+
+    def _now(self) -> tuple:
+        who = self.speaker.who() if self.speaker is not None and self.speaker.enrolled else {"heard": False}
+        voice = who["name"] if who["heard"] and who["known"] else ""
+        return voice, (self.mood.name if self.mood is not None and self.mood.enabled else "")
+
+    def _note(self) -> str:
+        """Aviso curto, anexado ao resultado de uma ferramenta, quando quem fala ou o humor mudou
+        no meio da conversa. Não gera fala: o modelo só passa a saber."""
+        voice, mood = now = self._now()
+        changed = [f"quem fala agora: {voice}" if voice and voice != self._told[0] else "",
+                   f"seu humor agora: {mood}" if mood and mood != self._told[1] else ""]
+        self._told = now
+        changed = "; ".join(c for c in changed if c)
+        return f" [contexto: {changed}]" if changed else ""
+
     async def _awake(self) -> None:
-        failures, handle, first = 0, None, True
+        failures, handle = 0, None
+        self.audio.beep("wake")               # resposta imediata: a conexão leva um ou dois segundos
+        self._set(State.THINKING, force=True)
+        self._heard = getattr(self.watcher, "take_heard", lambda: b"")()
+        if self.mood is not None:
+            self.mood.feel("madrugada" if datetime.now().hour < 5 else "acordou")
+        if self.speaker is not None and self._heard:
+            heard = np.frombuffer(self._heard, dtype=np.int16).astype(np.float32) / 32768.0
+            await asyncio.to_thread(self.speaker.hear, heard)
         while True:
             started = self.clock()
             try:
-                async with self.connect(build_config(self.cfg, self.memory, handle)) as session:
-                    if first:
-                        self.audio.beep("wake")
-                        first = False
+                self._told = self._now()
+                async with self.connect(build_config(self.cfg, self.memory, handle, self._context())) as session:
                     self._set(State.LISTENING, force=True)
                     self._handle_box = [handle]
                     try:
@@ -154,6 +202,14 @@ class Viv:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                live = self.cfg.setdefault("live", {})
+                if "voice" in str(exc).lower() and live.get("voice", SAFE_VOICE) != SAFE_VOICE:
+                    # a voz escolhida não existe neste modelo: volta para a padrão em vez de ficar muda
+                    BUS.emit("card", f"Voz {live['voice']} indisponível", kind="data", ok=False,
+                             body=f"Este modelo não aceita essa voz. Voltei para {SAFE_VOICE}; troque em Configurações.")
+                    ERRORS.record("voz", f"{live['voice']}: {exc}")
+                    live["voice"] = SAFE_VOICE
+                    continue
                 kind = classify(exc)
                 ERRORS.record("conexão Gemini", f"{type(exc).__name__}: {exc}")
                 if self.clock() - started >= 10:
@@ -185,6 +241,10 @@ class Viv:
         self._activity = self.clock()
         self._user_text, self._viv_text = "", ""
         self._turn_done, self._sleep_after_turn = False, False
+        heard, self._heard = self._heard, b""
+        for start in range(0, len(heard), 3200):     # "Ei, Viv, que horas são?": ela já ouve o pedido
+            await session.send_realtime_input(audio=types.Blob(data=heard[start:start + 3200],
+                                                               mime_type="audio/pcm;rate=16000"))
         tasks = [asyncio.create_task(c) for c in (self._send_mic(session), self._receive(session),
                                                   self._watchdog(session))]
         try:
@@ -264,6 +324,8 @@ class Viv:
             self.audio.flush()
             self._turn_done = False
             self._save_viv_turn()
+            if self.mood is not None:
+                self.mood.feel("interrompida")
             self._set(State.LISTENING)
         heard = content.input_transcription
         if heard is not None and heard.text:
@@ -288,8 +350,15 @@ class Viv:
         BUS.emit("transcript", text, role="user", final=True)
         self.memory.add_turn("user", text)
         self._set(State.THINKING)
-        # a verificação de voz é lenta; roda fora do laço de eventos
-        await asyncio.to_thread(self.gate.on_user_utterance, text, self.audio.recent())
+        if self.mood is not None:
+            self.mood.hear(text)
+        # o reconhecimento de voz é lento; roda fora do laço de eventos
+        await asyncio.to_thread(self._hear, text, self.audio.take_speech())
+
+    def _hear(self, text: str, speech) -> None:
+        if self.speaker is not None:
+            self.speaker.hear(speech)
+        self.gate.on_user_utterance(text, speech)
 
     def _save_viv_turn(self) -> None:
         text, self._viv_text = self._viv_text.strip(), ""
@@ -307,6 +376,10 @@ class Viv:
                 result = "ok; despeça-se em poucas palavras"
             else:
                 result = await asyncio.to_thread(self.gate.submit, call.name, dict(call.args or {}))
+                if self.mood is not None:
+                    self.mood.feel("erro" if result.startswith("erro:") else "trabalho")
+            if not responses:
+                result += self._note()
             responses.append(types.FunctionResponse(id=call.id, name=call.name, response={"result": result}))
         self._activity = self.clock()
         await session.send_tool_response(function_responses=responses)

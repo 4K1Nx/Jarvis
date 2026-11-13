@@ -59,6 +59,48 @@ A Viv lê a caixa de entrada por IMAP: lista não lidos, busca e lê uma mensage
 2. Crie uma senha de app em `myaccount.google.com/apppasswords` (exige verificação em duas etapas).
 3. Acrescente ao `.env`: `VIV_EMAIL_SENHA=a-senha-de-app` e reinicie a Viv.
 
+### Humor
+
+A Viv tem humores (serena, radiante, brincalhona, cansada, melancólica, impaciente, irritada). Elogios, agradecimentos e pedidos de desculpa melhoram o humor; grosserias, ferramentas que falham e a madrugada pioram; com o tempo ela volta a ficar serena. O humor muda as cores da tela, a expressão da fala e o jeito de responder, e aparece no topo da HUD.
+
+De mau humor ela pode se negar a fazer um pedido uma vez. Insistir sempre funciona: depois de uma recusa ela atende tudo por três minutos. Ajustes, lembretes, memória e o comando de dormir nunca são recusados. Em Configurações, “Humor” desliga tudo e “Humor pode recusar pedidos” desliga só as recusas.
+
+### Barra de progresso
+
+Tarefas que passam de um segundo (pesquisa profunda, programar, criar documentos, WhatsApp, limpeza) mostram uma barra fina acima da legenda com a etapa atual. Ações rápidas não mostram nada.
+
+### WhatsApp e pessoas
+
+“Viv, tem mensagem nova?”, “lê a conversa da minha mãe”, “manda para o chefe que eu chego às nove”. Ela usa o WhatsApp Web no navegador que já controla: na primeira vez, abre a página para você ler o QR code (WhatsApp > Aparelhos conectados); a sessão fica guardada em `data/browser-profile/`. Enviar sempre pede confirmação, e o cartão mostra o nome real do contato e o texto exato.
+
+Conte quem é quem (“a Maria Silva é minha mãe”) e a Viv guarda a pessoa com um apelido ou a relação, em `data/viv_pessoas.json`, e passa a se referir a ela assim. “Viv, quem você conhece?” mostra a lista.
+
+O WhatsApp não oferece API para conta pessoal; a Viv lê a página como você leria. Se o WhatsApp mudar a página, os seletores ficam no topo de `viv/tools/whatsapp.py`. As mensagens lidas são enviadas ao Gemini para ela resumir.
+
+### Conversas e planos com pessoas próximas
+
+A Viv ajuda a lembrar, planejar e escrever; o que dizer, quando falar e o que fazer é sempre escolha sua. Ela não mede afeto, não conta respostas e não cria urgência a partir do jeito de alguém escrever.
+
+| Fluxo | Como usar | Liga / pausa |
+|---|---|---|
+| Rascunho e envio | “Viv, me ajuda a responder a Bia”. Ela mostra destinatário e texto; você diz enviar, editar, copiar ou cancelar. Enviar pede confirmação daquele destinatário e daquele texto; mudou um deles, confirma de novo. Uma falha de resultado incerto nunca é repetida sem conferir a conversa. | Sempre disponível. Sem WhatsApp conectado, “copiar” põe o texto na área de transferência. |
+| Trecho selecionado | Copie o trecho (Ctrl+C) e diga “Viv, olha o que eu copiei”. | Sempre disponível; é o modo manual. |
+| Tom por pessoa | “Com a Bia eu escrevo curto e carinhoso”, “guarda essa mensagem minha como exemplo”. | — |
+| Lembrete de retomar | “Me lembra de responder a Bia” (20 min por padrão). Depois: adiar, dispensar ou feito. | Só quando você pede. Horário silencioso em Configurações. |
+| Presentes e aniversário | “O aniversário da Bia é 20/03”, “guarda a ideia: girassóis”. 14 dias antes aparecem até três ideias. | Apague com “Viv, apaga a ideia dos girassóis”. |
+| Encontros | “Viv, planeja um encontro com a Bia”; “guarda este lugar”. | Revisão semanal: Configurações > “Revisão semanal de encontros”. |
+| Notas de evento | “Jantar sábado às 20h, me lembra de perguntar da viagem”. Meia hora antes as notas aparecem. | Apague a nota ou o evento por voz. |
+| Sugestão de cuidado | Cadastre o plantão dela; com chuva ou turno longo, a Viv sugere oferecer algo. | Exige o consentimento “cuidado” da pessoa. |
+| Gestos ocasionais | “Me lembra de um gesto para a Bia a cada seis a oito semanas”. | “Pausa os gestos da Bia”. |
+| Depois de um conflito | Só a seu pedido, sobre o trecho que você escolher. | — |
+| Resumo semanal | Mensagens a retomar, planos, datas e lembretes. | Configurações > “Resumo semanal privado”. |
+
+Os lembretes pessoais aparecem só na tela, sem conteúdo de conversa; “Lembretes pessoais em voz alta” muda isso.
+
+**Consentimento.** Tudo o que usa mensagens ou dados de outra pessoa começa desligado. “Viv, a Bia concordou com o acompanhamento” abre um cartão que diz o que será usado, o que fica salvo, por quanto tempo e se passa pelo Gemini; só vale depois do seu “sim”. Finalidades: `acompanhamento`, `presentes`, `agenda`, `cuidado`, `endereco`. “O que você guarda sobre a Bia?” mostra tudo; “revoga o consentimento da Bia” para a leitura e apaga o que dependia dele. Consentimento vencido é revogado sozinho. Os dados ficam em `data/viv_relacoes.json` (marcas, datas e notas; nunca o texto das conversas) e os rascunhos só existem na memória do programa.
+
+**Ainda depende de configuração:** não há agenda conectada (os encontros usam a sua rotina e o que a pessoa compartilhou, e você confirma os horários), não há Notion (as listas são locais) e a Viv não faz compras, reservas nem pedidos de entrega.
+
 ### Desinstalar programas
 
 "Desinstala o 7-Zip" usa o winget e sempre pede confirmação, mostrando o nome exato do programa. Se o nome falado serve para mais de um programa, ela pergunta qual em vez de escolher.
@@ -123,6 +165,15 @@ Com a Viv fechada:
 ```
 
 Você lê oito frases de cinco segundos. Só o vetor da voz é salvo, em `data/voiceprint.json`; o áudio não é guardado. Sem cadastro, a confirmação por voz fica desligada e vale só o clique.
+
+A Viv reconhece quem fala a cada turno, usando só a fala (sem silêncio nem a voz dela), e mostra o nome no topo da tela. Um “sim” curto confirma uma ação quando o dono foi reconhecido há pouco na mesma conversa; dizer “sim, pode fazer” é mais confiável. Se uma voz que não é a do dono pedir WhatsApp ou e-mail, ela pede confirmação antes de mostrar.
+
+```bat
+.venv\Scripts\python.exe scripts\enroll_voice.py --testar         mostra a sua pontuação contra o cadastro
+.venv\Scripts\python.exe scripts\enroll_voice.py --pessoa Ana     cadastra outra pessoa da casa
+```
+
+Se `--testar` ficar abaixo do limiar no uso normal, refaça o cadastro no microfone do dia a dia ou ajuste `speaker_id.privileged_threshold` (padrão 0,78). Outras pessoas ficam em `data/voiceprints.json`: são reconhecidas pelo nome, mas não confirmam ações perigosas.
 
 A biometria por voz evita que outra pessoa na sala dê ordens perigosas. Ela não protege contra uma gravação da sua voz.
 
@@ -194,3 +245,22 @@ Para ver só a HUD, com eventos de demonstração: `run.bat --demo`.
 | O atalho não funciona | Outro programa pode usar a mesma combinação. Troque `wake.hotkey`. |
 
 As falhas são contadas por categoria em `VIV_PENDENCIAS.md`.
+
+## Criação: programar, documentos, pesquisa e habilidades
+
+| Você diz | A Viv usa | O que acontece |
+|---|---|---|
+| “Cria um jogo da cobrinha” / “muda a cor” / “conserta o erro” | `codigo_criar` | Escreve o projeto em `Documentos\Viv\Projetos\<nome>`, confere a sintaxe e guarda cada passo num histórico git. |
+| “Roda o projeto” | `codigo_executar` | Pede confirmação, instala dependências na primeira vez e mostra a saída. O erro fica guardado para o próximo ajuste. |
+| “Desfaz a última alteração” | `codigo_desfazer` | Volta um passo (pede confirmação). |
+| “Faz uma apresentação sobre…” / “uma planilha de gastos” / “um PDF com…” | `documento_criar` | Gera Word, PDF, slides ou planilha em `Documentos\Viv\Documentos` e abre. |
+| “Resume esse PDF” | `documento_ler` | Lê PDF, Word, PowerPoint e Excel. |
+| “Pesquisa a fundo sobre…” | `pesquisa_profunda` | Várias buscas, leitura das páginas e relatório com fontes numeradas. |
+| “Quando eu falar modo trabalho, abra…” | `habilidade_salvar` | Guarda a sequência e passa a segui-la pelo nome. |
+| “Está tudo funcionando com você?” | `viv_diagnostico` | Tabela com conexão, voz, e-mail, bibliotecas e erros recentes. |
+
+Os cartões da HUD têm uma barrinha que encolhe até a hora de sair (avisos: 8 s; painéis: 75 s). Passar o mouse
+em cima pausa o tempo. Os painéis aceitam markdown simples: títulos, negrito, listas, tarefas, tabelas e código.
+
+Pastas faladas (“Área de Trabalho”, “Downloads”, “Documentos”) apontam para as pastas reais do Windows, mesmo
+quando o OneDrive as mudou de lugar.

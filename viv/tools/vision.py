@@ -3,11 +3,10 @@ import time
 from pathlib import Path
 
 from viv.bus import BUS
+from viv.tools import _llm
 from viv.tools.registry import tool
 
 DEFAULT_QUESTION = "Descreva o que está na tela: janelas, textos importantes, erros visíveis e elementos clicáveis."
-FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-2.5-flash")
-TRANSIENT = ("503", "unavailable", "429", "resource_exhausted", "overloaded", "high demand", "deadline", "timeout", "500")
 
 
 def capture(path: str) -> str:
@@ -18,20 +17,8 @@ def capture(path: str) -> str:
 
 
 def generate(client, model: str, contents: list, sleep=time.sleep) -> str:
-    """Pergunta ao modelo de visão. Em falha passageira (503, cota), tenta de novo e cai para modelos reserva."""
-    last = None
-    for name in dict.fromkeys((model,) + FALLBACK_MODELS):
-        for attempt in range(2):
-            try:
-                response = client.models.generate_content(model=name, contents=contents)
-                return (response.text or "").strip()
-            except Exception as exc:
-                last = exc
-                if not any(marker in str(exc).lower() for marker in TRANSIENT):
-                    raise
-                if attempt == 0:
-                    sleep(1.5)
-    raise RuntimeError(f"o serviço de visão está sobrecarregado agora; tente de novo em instantes ({str(last)[:80]})")
+    """Pergunta ao modelo de visão, com novas tentativas e modelos reserva em falha passageira."""
+    return _llm.generate(client, model, contents, sleep=sleep, label="de visão")
 
 
 def look(ctx, question: str) -> str:

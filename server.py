@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 
 
-def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None) -> FastAPI:
+def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=None) -> FastAPI:
     app = FastAPI(title="Viv", docs_url=None, redoc_url=None, openapi_url=None)
     port = cfg.get("server", {}).get("port", 8765)
     allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
@@ -29,16 +29,27 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None) -> Fast
     def index():
         return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-store"})
 
+    @app.get("/favicon.ico")
+    def favicon():
+        return FileResponse(WEB / "icon-32.png", media_type="image/png")
+
     @app.get("/api/status")
     def status():
+        tick = getattr(gate, "tick", None)
+        if tick is not None:
+            tick()                        # confirmação vencida não volta para a tela
         pending = gate.pending
+        who = speaker.who() if speaker is not None and speaker.enrolled else None
         return {
+            "mood": mood.state() if mood is not None else None,
+            "speaker": {"name": who["name"], "known": who["known"], "owner": who["owner"]} if who and who["heard"] else None,
             "state": viv.state.value,
             "mic": audio.input_name,
             "model": cfg.get("live", {}).get("model", ""),
             "enrolled": bool(speaker is not None and speaker.enrolled),
             "pending": {"name": pending["name"], "text": pending.get("text") or pending["name"],
-                        "voice": bool(pending.get("voice"))} if pending else None,
+                        "voice": bool(pending.get("voice")),
+                        "seconds": gate.remaining() if hasattr(gate, "remaining") else 30} if pending else None,
         }
 
     @app.post("/api/wake")

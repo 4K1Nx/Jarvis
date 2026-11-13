@@ -23,5 +23,10 @@ data/screen.png
 .superpowers/
 data/viv_config.json
 data/viv_erros.jsonl
+data/viv_habilidades.json
 data/browser-profile/
 data/browser.png
+data/voiceprints.json
+data/viv_humor.json
+data/viv_pessoas.json
+data/viv_relacoes.json

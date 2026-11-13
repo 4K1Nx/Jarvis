@@ -1,6 +1,6 @@
 # Viv Live — configuração
 assistant: {name: Viv, idle_seconds: 60, history_turns: 12}
-live: {model: gemini-3.8-live, api_version: v1beta, voice: Aoede, language: pt-BR, api_key_env: GEMINI_API_KEY}
+live: {model: gemini-3.8-live, api_version: v1beta, voice: Achernar, language: pt-BR, api_key_env: GEMINI_API_KEY}
 audio:
   input_device_name: null   # null = microfone padrão do Windows; ou parte do nome
   headphones: false         # true = microfone aberto enquanto a Viv fala
@@ -13,7 +13,7 @@ wake:
   clap_min_gap_ms: 120
   clap_max_gap_ms: 700
   hotkey: ctrl+alt+v
-speaker_id: {enabled: true, voiceprint_path: data/voiceprint.json, privileged_threshold: 0.82, enroll_clips: 8}
+speaker_id: {enabled: true, voiceprint_path: data/voiceprint.json, privileged_threshold: 0.78, short_threshold: 0.62, people_path: data/voiceprints.json, enroll_clips: 8}
 safety:
   confirm_timeout_seconds: 30
   dangerous: [system_power, system_kill, fs_delete, fs_write, files_move, files_append_text, files_replace_text, desktop_run_command]

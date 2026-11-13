@@ -44,7 +44,9 @@ def test_rms_of_silence_and_full_scale():
 
 
 def test_echo_gate():
-    assert echo_gate(0.0, playing=True, headphones=True, threshold=0.08) is True
+    assert echo_gate(0.0, playing=False, headphones=True, threshold=0.08) is True
+    assert echo_gate(0.01, playing=True, headphones=True, threshold=0.08) is False   # vazamento do fone
+    assert echo_gate(0.03, playing=True, headphones=True, threshold=0.08) is True
     assert echo_gate(0.0, playing=False, headphones=False, threshold=0.08) is True
     assert echo_gate(0.05, playing=True, headphones=False, threshold=0.08) is False
     assert echo_gate(0.20, playing=True, headphones=False, threshold=0.08) is True
@@ -68,14 +70,14 @@ def test_output_callback_plays_queued_audio_then_pads_with_silence():
     assert (samples[:240] == 1000).all() and (samples[240:] == 0).all()
 
 
-def test_is_playing_holds_for_300ms_after_buffer_empties():
+def test_is_playing_holds_for_600ms_after_buffer_empties():
     clock = Clock()
     audio = AudioIO(CFG, clock=clock)
     assert audio.is_playing() is False
     audio.play(frame(1000, 480))
     assert audio.is_playing() is True
     audio._on_output(bytearray(960), 480, None, None)
-    clock.now += 0.2
+    clock.now += 0.5
     assert audio.is_playing() is True
     clock.now += 0.2
     assert audio.is_playing() is False
@@ -105,7 +107,29 @@ def test_should_send_blocks_quiet_mic_while_playing():
     assert audio.should_send(frame(100)) is True
     audio.play(frame(1000, 480))
     assert audio.should_send(frame(100)) is False
-    assert audio.should_send(frame(20000)) is True
+    assert audio.should_send(frame(20000)) is False      # um estalo isolado não abre o microfone
+    assert audio.should_send(frame(100)) is False
+
+
+def test_should_send_opens_on_sustained_speech_and_holds_through_pauses():
+    clock = Clock()
+    audio = AudioIO(CFG, clock=clock)
+    audio.play(frame(1000, 48000))
+    assert [audio.should_send(frame(20000)) for _ in range(3)] == [False, False, False]   # começo da fala: só mede o eco
+    audio._echo = 0.0
+    clock.now += 0.5
+    assert [audio.should_send(frame(20000)) for _ in range(3)] == [False, False, True]
+    clock.now += 0.3
+    assert audio.should_send(frame(100)) is True         # pausa curta dentro da frase continua passando
+    clock.now += 0.7
+    assert audio.should_send(frame(100)) is False        # depois de HOLD em silêncio, fecha de novo
+
+
+def test_should_send_with_headphones_blocks_only_faint_leak():
+    audio = AudioIO({"audio": {"headphones": True, "barge_in_rms": 0.08}}, clock=Clock())
+    audio.play(frame(1000, 48000))
+    assert [audio.should_send(frame(200)) for _ in range(4)] == [False] * 4
+    assert [audio.should_send(frame(2000)) for _ in range(3)] == [False, False, True]
 
 
 def test_full_input_queue_drops_oldest_instead_of_blocking():

@@ -33,3 +33,7 @@ data/viv_relacoes.json
 data/viv_remoto.json
 bin/
 data/gowa/
+data/capability_gaps.json
+data/jobs.json
+data/latency-v1.1.jsonl
+data/native-crash.log

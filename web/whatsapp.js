@@ -22,13 +22,25 @@
   let timer = null;
 
   function avatar(name, photo, group) {
-    const box = el('span', 'wa-avatar', group ? '👥' : (String(name || '?').trim()[0] || '?').toUpperCase());
+    const box = el('span', 'wa-avatar', (String(name || '?').trim()[0] || '?').toUpperCase());
+    if (group) box.classList.add('wa-group');
     if (PHOTO.test(photo || '')) {
       const img = el('img');
       img.alt = ''; img.referrerPolicy = 'no-referrer';
       img.addEventListener('load', () => { box.textContent = ''; box.append(img); });
       img.src = photo;
     }
+    return box;
+  }
+
+  // balão de conversa desenhado em SVG: os símbolos de telefone das fontes variam de máquina para máquina
+  function logo() {
+    const ns = 'http://www.w3.org/2000/svg', box = el('span', 'wa-logo'), svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', 'M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6c-.5.4-1.3.1-1.3-.6V16A2.5 2.5 0 0 1 4 13.5z');
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path); box.append(svg);
     return box;
   }
 
@@ -158,7 +170,7 @@
     const close = el('button', 'wa-close', '×');
     close.type = 'button'; close.setAttribute('aria-label', 'Fechar');
     close.addEventListener('click', () => clear());
-    top.append(el('span', 'wa-logo', '✆'), title, close);
+    top.append(logo(), title, close);
     const list = el('ul', 'wa-rows');
     chats.forEach((chat, i) => {
       const row = el('li', 'wa-row');

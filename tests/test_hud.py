@@ -503,3 +503,23 @@ def test_draft_panel_and_whatsapp_chat_stack_instead_of_overlapping(page):
     page.click(".panel-close")
     page.wait_for_timeout(700)
     assert page.evaluate("document.getElementById('wa').style.top") == "" and page.errors == []
+
+
+def test_pixel_avatar_follows_state_and_mood_and_can_be_hidden(page):
+    avatar = page.locator("#avatar")
+    assert avatar.is_visible()
+    emit(page, channel="state", state="thinking")
+    emit(page, channel="mood", text="Brincalhona", name="brincalhona", palette=["#ff6ad5", "#b96bff", "#6bffea"], enabled=True)
+    page.wait_for_timeout(300)
+    assert avatar.get_attribute("data-state") == "thinking"
+    assert avatar.get_attribute("aria-label") == "Viv: pensando, brincalhona"
+    lit = page.evaluate("""() => { const c = document.getElementById('avatar-canvas');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; }""")
+    assert lit > 40, "os olhos e a boca acenderam na telinha"
+    emit(page, channel="state", state="executing")
+    assert avatar.get_attribute("aria-label").startswith("Viv: lendo")
+    emit(page, channel="hud", avatar=False)
+    assert not avatar.is_visible()
+    emit(page, channel="hud", avatar=True)
+    assert avatar.is_visible() and page.errors == []

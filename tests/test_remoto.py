@@ -352,3 +352,40 @@ def test_bare_viv_opens_a_conversation_until_viv_encerrar(tmp_path, sandbox, eve
     remote.handle(CRIS, "Cris", "/viv", ctx, send)
     clock.now += 1801
     assert not remote.handle(CRIS, "Cris", "oi", ctx, send), "meia hora parada encerra a conversa sozinha"
+
+
+def test_search_results_go_back_in_the_whatsapp_reply(tmp_path, sandbox, events, monkeypatch):
+    run_now(monkeypatch)
+    remote, sent = make_remote(tmp_path), []
+    remote.set_admin(CRIS, "Cris", True)
+
+    @tool("t_pesquisa", "Pesquisa.", {})
+    def pesquisa(ctx=None):
+        return "Hiroshi: lámen ótimo (https://hiroshi.example)\n[resultados exibidos no painel da tela]"
+    try:
+        client = Model(("ferramenta", ("t_pesquisa", {})), ("texto", ""), ("texto", "O Hiroshi é o melhor: https://hiroshi.example"))
+        ctx = Context({}, client=client, remote=remote)
+        remote.handle(CRIS, "Cris", "/viv pesquisa um japonês", ctx, lambda j, t: sent.append(t))
+        assert sent == ["Viv: O Hiroshi é o melhor: https://hiroshi.example"], "resposta vazia: pede o texto de novo"
+        told = client.seen[1][0][-1].parts[0].function_response.response["result"]
+        assert "NÃO vê a tela" in told, "a ferramenta lembra que quem pediu não vê a tela"
+        assert "não vê a tela" in client.seen[0][1]["system_instruction"]
+
+        client.replies = [("ferramenta", ("t_pesquisa", {})), ("texto", ""), ("texto", "")]
+        remote.handle(CRIS, "Cris", "/viv pesquisa de novo", ctx, lambda j, t: sent.append(t))
+        assert sent[-1].startswith("Viv: Aqui está o que encontrei:") and "hiroshi.example" in sent[-1]
+        assert "painel da tela" not in sent[-1], "sem as notas internas para o modelo"
+    finally:
+        registry._REG.pop("t_pesquisa")
+
+
+def test_search_asked_on_whatsapp_never_opens_tabs_on_the_owners_pc(monkeypatch, events):
+    from viv.tools import web
+    opened = []
+    monkeypatch.setattr(web, "search", lambda q: [{"title": "A", "url": "https://a.example", "body": "x"}])
+    monkeypatch.setattr(web.webbrowser, "open", opened.append)
+    registry.load_all()
+    registry.call("web_search", {"query": "x", "abrir_guias": 2}, Context({}, origin=CRIS))
+    assert opened == []
+    registry.call("web_search", {"query": "x", "abrir_guias": 1}, Context({}))
+    assert opened == ["https://a.example"]

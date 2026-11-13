@@ -136,7 +136,9 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
 
     def apply_setting(key, value):
         """Ajuste alterado pela HUD ou pela Viv passa a valer na hora."""
-        if key == "usuario.nome":
+        if key == "hud.avatar":
+            BUS.emit("hud", "", avatar=bool(value))
+        elif key == "usuario.nome":
             cfg["assistant"]["user_name"] = value
         elif key == "usuario.cidade":
             cfg["assistant"]["user_city"] = value

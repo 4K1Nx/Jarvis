@@ -12,8 +12,8 @@
   const confirmSlot = document.getElementById('confirm-slot');
   const PANEL_KINDS = { search: 1, vision: 1, content: 1, weather: 1 };
   const PANEL_LIFE = 75000, TOAST_LIFE = 8000, TOASTS = 4;
-  const ICONS = { action: '›', search: '?', vision: '◉', data: 'i', content: '≡', weather: '☼' };
-  const toasts = [];        // {el, slot}
+  const KINDS = { action: 1, search: 1, vision: 1, data: 1, content: 1, weather: 1 };
+  const toasts = [];        // {el}, na ordem em que chegaram
   let panel = null;         // {el}
   let confirmTimer = null;
 
@@ -22,14 +22,21 @@
   const safeUrl = url => /^https?:\/\//i.test(String(url || ''));
 
   // ---- posição e linhas conectoras -----------------------------------------
-  function placeToast(card) {
-    if (narrow()) { card.el.style.cssText = ''; return; }
-    const top = 84, bottom = window.innerHeight - 210, slotH = Math.max(96, (bottom - top) / TOASTS);
-    card.el.style.top = (top + card.slot * slotH) + 'px';
-    card.el.style.maxHeight = (slotH - 12) + 'px';
+  // Avisos empilhados de cima para baixo, um logo abaixo do outro, na ordem em que chegaram.
+  function placeToasts() {
+    const top = 72, gap = 10, room = window.innerHeight - 210 - top;
+    let y = top;
+    toasts.forEach(card => {
+      if (narrow()) { card.el.style.cssText = ''; return; }
+      card.el.style.maxHeight = Math.max(88, room / TOASTS - gap) + 'px';
+      card.el.style.top = y + 'px';
+      y += card.el.offsetHeight + gap;
+    });
   }
 
+  // linhas conectoras: de cada cartão até a borda do núcleo
   function drawLinks() {
+    if (!links) return;
     while (links.firstChild) links.firstChild.remove();
     if (narrow() || !window.VivCore) return;
     const c = window.VivCore.center(), ns = 'http://www.w3.org/2000/svg';
@@ -38,7 +45,7 @@
     for (const [node, left] of items) {
       const box = node.getBoundingClientRect();
       if (!box.width) continue;
-      const x1 = left ? box.right : box.left, y1 = box.top + Math.min(box.height / 2, 44);
+      const x1 = left ? box.right : box.left, y1 = box.top + Math.min(box.height / 2, 36);
       const angle = Math.atan2(y1 - c.y, x1 - c.x);
       const line = document.createElementNS(ns, 'line');
       line.setAttribute('x1', x1); line.setAttribute('y1', y1);
@@ -60,6 +67,7 @@
     if (index < 0) return;
     toasts.splice(index, 1);
     vanish(card.el);
+    placeToasts();
   }
 
   function closePanel() {
@@ -79,7 +87,7 @@
     if (!both) { wa.style.top = ''; return; }
     requestAnimationFrame(() => {
       if (!panel) return;
-      wa.style.top = Math.round(panel.el.getBoundingClientRect().bottom + 14) + 'px';
+      wa.style.top = Math.round(panel.el.getBoundingClientRect().bottom + 12) + 'px';
       drawLinks();
     });
   }
@@ -220,7 +228,9 @@
     node.dataset.kind = kind;
     node.dataset.ok = event.ok === false ? 'false' : 'true';
     const head = el('div', 'card-head');
-    head.append(el('span', 'card-icon', event.ok === false ? '!' : ICONS[kind]), el('span', 'card-title', event.text || ''));
+    const mark = el('span', 'card-icon'); mark.setAttribute('aria-hidden', 'true');
+    head.append(mark, el('span', 'card-title', event.text || ''));
+    if (event.ok === false) head.append(el('span', 'card-flag', 'Falhou'));
     node.append(head);
     if (kind === 'weather' && event.weather && typeof event.weather === 'object') node.append(weather(event.weather));
     if (event.body) node.append(kind === 'content' ? content(event.body, event.format) : inline(el('p', 'card-body'), event.body));
@@ -255,7 +265,7 @@
   }
 
   function show(event) {
-    const kind = ICONS[event.kind] ? event.kind : 'action';
+    const kind = KINDS[event.kind] ? event.kind : 'action';
     const node = build(event, kind);
     if (PANEL_KINDS[kind]) {
       closePanel();
@@ -272,10 +282,7 @@
       node.classList.add('toast');
       const limit = narrow() ? 3 : TOASTS;
       while (toasts.length >= limit) removeToast(toasts[0]);
-      const used = new Set(toasts.map(t => t.slot));
-      let slot = 0;
-      while (used.has(slot)) slot++;
-      const card = { el: node, slot };
+      const card = { el: node };
       toasts.push(card);
       // notificação de mensagem do WhatsApp: clicar abre a conversa
       if (/^[0-9A-Za-z.:_-]{3,40}@(s\.whatsapp\.net|lid)$/.test(event.wa || '') && window.VivWhatsApp) {
@@ -286,8 +293,8 @@
         node.addEventListener('click', go);
         node.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
       }
-      placeToast(card);
       layer.append(node);
+      placeToasts();                                   // depois de entrar na página, quando já tem altura
       life(node, TOAST_LIFE, () => removeToast(card));
     }
     node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day, .md > *').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
@@ -331,7 +338,7 @@
 
   const relayout = () => {
     while (toasts.length > (narrow() ? 3 : TOASTS)) removeToast(toasts[0]);
-    toasts.forEach(placeToast); drawLinks();
+    placeToasts(); drawLinks();
   };
   window.addEventListener('resize', relayout);
   window.addEventListener('viv-core-moved', drawLinks);

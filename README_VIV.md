@@ -34,6 +34,7 @@ Exemplos de pedidos:
 - **Painel à esquerda:** a informação que você pediu (clima, pesquisa, listas, tabelas, diagnóstico). Fica até você fechar no ×, pedir outra coisa ou passar pouco mais de um minuto.
 - **Avisos à direita:** cada ação executada. Somem sozinhos.
 - **Cartão central:** confirmação de ação perigosa.
+- **Avatar no canto inferior esquerdo:** o rostinho da Viv numa telinha de LED, como um robô: olhos e boca feitos de pontos acesos na cor do humor. Olhos fechados e um “z” dormindo; olhos abertos piscando ouvindo; olhar para cima e três pontinhos pensando; boca que acompanha a voz falando; olhos que varrem a linha lendo ou executando; olhos em X num erro. A expressão segue o humor: sorriso sereno, olhos felizes (radiante), piscadela (brincalhona), pálpebras caídas (cansada), sobrancelhas tristes (melancólica) ou franzidas (impaciente, irritada). Passe o mouse para ver o estado por escrito. Desliga em Configurações > Tela > “Avatar no canto da tela”, ou por voz.
 
 ### Configurações e rotina
 

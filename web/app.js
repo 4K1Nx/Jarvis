@@ -24,12 +24,12 @@
     const chip = $('mood'), root = document.documentElement, colors = data && data.palette;
     chip.hidden = !(data && data.enabled);
     if (!data) return;
+    if (window.VivAvatar) window.VivAvatar.setMood(data);
     chip.textContent = data.label || data.text || '';
     if (!Array.isArray(colors) || colors.length < 3 || !colors.every(c => /^#[0-9a-f]{6}$/i.test(c))) return;
     root.style.setProperty('--viv-rose', colors[0]);
     root.style.setProperty('--viv-violet', colors[1]);
     root.style.setProperty('--viv-cyan', colors[2]);
-    root.style.setProperty('--viv-line', colors[1] + '61');
     window.VivCore.setPalette(colors[0], colors[1], colors[2]);
   }
 
@@ -52,6 +52,7 @@
     $('conn').hidden = !reconnecting;
     $('wake').textContent = next === 'sleeping' || next === 'error' ? 'Ativar Viv' : 'Dormir';
     window.VivCore.setState(next);
+    if (window.VivAvatar) window.VivAvatar.setState(next);
     if (next === 'sleeping') {
       speaker(null);
       clearTimeout(captionTimer);
@@ -74,7 +75,7 @@
     if (!event || typeof event !== 'object') return;
     switch (event.channel) {
       case 'state': setState(event.state, event.reconnecting); break;
-      case 'level': window.VivCore.setLevel(event.source, event.value); break;
+      case 'level': window.VivCore.setLevel(event.source, event.value); if (window.VivAvatar) window.VivAvatar.setLevel(event.source, event.value); break;
       case 'transcript': transcript(event); break;
       case 'card': window.VivCards.show(event); break;
       case 'confirm': window.VivCards.confirm(event); break;
@@ -82,7 +83,8 @@
       case 'confirm_done': window.VivCards.confirmDone(); break;
       case 'progress': progress(event); break;
       case 'whatsapp': window.VivWhatsApp.handle(event); break;
-      case 'mood': mood({ label: event.text, palette: event.palette, enabled: event.enabled }); break;
+      case 'mood': mood({ name: event.name, label: event.text, palette: event.palette, enabled: event.enabled }); break;
+      case 'hud': if (window.VivAvatar && typeof event.avatar === 'boolean') window.VivAvatar.show(event.avatar); break;
       case 'speaker': speaker({ name: event.text, known: event.known }); break;
     }
   }
@@ -93,6 +95,7 @@
       setState(data.state);
       $('mic').textContent = data.mic || '';
       mood(data.mood); speaker(data.speaker);
+      if (window.VivAvatar) window.VivAvatar.show(data.avatar !== false);
       // o tempo que resta vem do servidor: reabrir a tela não reinicia a contagem nem ressuscita um pedido vencido
       if (data.pending && data.pending.seconds > 0) window.VivCards.confirm({ text: data.pending.text, voice: data.pending.voice, seconds: data.pending.seconds });
       else window.VivCards.confirmDone();

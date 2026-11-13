@@ -6,6 +6,10 @@
   const drawer = $('settings'), gear = $('gear');
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   let closing = null;
+  // seções da tela, pelo começo da chave do ajuste
+  const GROUPS = { usuario: 'Você', audio: 'Som', conversa: 'Conversa', ativacao: 'Conversa', humor: 'Humor',
+                   silencio: 'Pessoas próximas', relacoes: 'Pessoas próximas', whatsapp: 'WhatsApp', hud: 'Tela',
+                   voz: 'Voz', inicio: 'Ao ligar o computador', email: 'E-mail' };
 
   function message(text, bad) {
     const node = $('settings-msg');
@@ -73,7 +77,12 @@
       const data = await (await fetch('/api/settings')).json();
       const list = $('settings-list');
       while (list.firstChild) list.firstChild.remove();
-      (data.items || []).forEach((item, i) => { const row = field(item); row.style.setProperty('--i', i); list.append(row); });
+      let group = '';
+      (data.items || []).forEach(item => {
+        const title = GROUPS[String(item.key).split('.')[0]] || 'Outros';
+        if (title !== group) { group = title; list.append(el('h3', 'setting-group', title)); }
+        list.append(field(item));
+      });
       routine(data.rotina || []);
     } catch (error) { message('Configurações indisponíveis.', true); }
   }

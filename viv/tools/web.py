@@ -35,6 +35,8 @@ def web_search(query, abrir_guias=0, ctx=None):
     results = [{"title": h["title"], "url": h["url"], "body": h["body"][:260]} for h in hits]
     BUS.emit("card", f"Pesquisa: {query}", kind="search", results=results, ok=True)
     opened = 0
+    if getattr(ctx, "origin", ""):
+        abrir_guias = 0                               # pedido pelo WhatsApp: abrir guias no PC do dono não ajuda ninguém
     for hit in hits[:max(0, min(3, int(abrir_guias or 0)))]:
         if hit["url"].startswith(("http://", "https://")):
             webbrowser.open(hit["url"])

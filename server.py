@@ -47,6 +47,7 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
             "mic": audio.input_name,
             "model": cfg.get("live", {}).get("model", ""),
             "enrolled": bool(speaker is not None and speaker.enrolled),
+            "avatar": bool(settings.get("hud.avatar")) if settings is not None else True,
             "pending": {"name": pending["name"], "text": pending.get("text") or pending["name"],
                         "voice": bool(pending.get("voice")),
                         "seconds": gate.remaining() if hasattr(gate, "remaining") else 30} if pending else None,

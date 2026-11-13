@@ -30,6 +30,7 @@ SCHEMA: dict[str, tuple] = {
     "relacoes.dia_semana": (str, "seg", "Dia da revisão e do resumo", "seg, ter, qua, qui, sex, sab ou dom.", None),
     "whatsapp.direto": (bool, True, "WhatsApp direto, sem navegador", "Usa o serviço local do WhatsApp (instale com scripts/instalar_whatsapp.py). Desligado, a Viv usa o WhatsApp Web no navegador.", None),
     "whatsapp.avisar_novas": (bool, True, "Avisar mensagens novas do WhatsApp", "Mostra na tela quem mandou mensagem, sem o conteúdo. Só com o WhatsApp direto.", None),
+    "hud.avatar": (bool, True, "Avatar no canto da tela", "Uma Viv pequenininha em pixel art que mostra se ela está ouvindo, pensando, falando ou lendo, e o humor dela.", None),
     "voz.nome": (str, "Achernar", "Voz", "Voz do Gemini. Suaves: Achernar, Vindemiatrix, Sulafat. Vale na próxima vez que ela acordar.", ("live", "voice")),
     "inicio.com_windows": (bool, False, "Abrir junto com o Windows", "A Viv inicia quando o computador liga.", None),
     "inicio.boas_vindas": (bool, True, "Boas-vindas ao ligar", "Ao iniciar com o Windows, ela faz um resumo do dia.", None),

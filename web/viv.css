@@ -335,6 +335,10 @@ body:not([data-state="sleeping"]) .hint { visibility: hidden; }
 .wa-row[data-pending="true"] .wa-row-text span { color: var(--viv-ink); }
 .wa-badge { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; font-style: normal; font-size: 11.5px; font-weight: 700; color: #1a0714; background: var(--viv-rose); box-shadow: 0 0 14px rgba(255, 95, 168, .5); }
 .wa-foot { margin: 0; padding: 10px 16px 14px; font-size: 12px; color: var(--viv-dim); border-top: 1px solid rgba(155, 107, 255, .12); }
+.wa-connect-body { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px 18px 20px; text-align: center; }
+.wa-connect-body p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--viv-dim); }
+.wa-qr { width: min(240px, 100%); aspect-ratio: 1; border-radius: 12px; background: #fff; padding: 10px; image-rendering: pixelated; }
+.wa-code { font-size: 30px !important; font-weight: 700; letter-spacing: .18em; color: var(--viv-ink) !important; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { #wa { left: 12px; right: 12px; width: auto; top: 64px; bottom: 200px; align-items: flex-start; } }
 @media (prefers-reduced-motion: reduce) {
   .wa-card, .wa-chat { transition: opacity .2s ease; transform: none; clip-path: none; }

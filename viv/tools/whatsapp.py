@@ -1,15 +1,16 @@
-"""WhatsApp pelo WhatsApp Web, no navegador que a Viv já controla.
+"""WhatsApp da Viv: direto pelo serviço local (viv/gowa.py) ou, como reserva, pelo WhatsApp Web.
 
-Não existe API oficial para conta pessoal; a Viv usa a página como uma pessoa usaria.
-O login é pelo QR code, uma vez: o perfil do navegador (data/browser-profile) guarda a
-sessão. Ler é conteúdo pessoal (`private`); enviar sempre pede confirmação, e o cartão
-mostra o nome real do contato e o texto exato.
+O caminho direto é o padrão quando o serviço está instalado (scripts/instalar_whatsapp.py)
+e o ajuste “WhatsApp direto” está ligado; nele, ler não marca nada como lido. Sem ele, a
+Viv usa a página do WhatsApp Web no navegador que já controla, e abrir uma conversa marca
+as mensagens como lidas. Os dois pareiam pelo QR code uma vez e guardam a sessão.
 
-A lista de conversas é lida sem abrir nenhuma (não marca nada como lido). Abrir uma
-conversa marca as mensagens como lidas, como aconteceria no celular.
+Ler é conteúdo pessoal (`private`); enviar sempre pede confirmação, e o cartão mostra o
+nome real do contato e o texto exato. As ferramentas não sabem qual caminho está em uso:
+_chats, _read, _audio, _send e replied escolhem.
 
-A página muda de tempos em tempos. Tudo o que depende do HTML dela está em SELECTORS,
-SEARCH e nos scripts abaixo; o resto do módulo não conhece a página.
+A página do WhatsApp Web muda de tempos em tempos. Tudo o que depende do HTML dela está
+em SELECTORS, SEARCH e nos scripts abaixo.
 """
 import base64
 import json
@@ -18,6 +19,7 @@ import tempfile
 import unicodedata
 from pathlib import Path
 
+from viv import gowa as direct
 from viv.bus import BUS
 from viv.drafts import DRAFTS
 from viv.people import People
@@ -137,7 +139,7 @@ def clean_messages(rows: list[dict], me: str = "Você") -> list[dict]:
     messages = []
     for row in rows:
         found = META.search(str(row.get("meta") or ""))
-        when, author = (found.group(1), found.group(2)) if found else (str(row.get("time") or ""), "")
+        when, author = (found.group(1), found.group(2)) if found else (str(row.get("time") or ""), str(row.get("author") or ""))
         image = str(row.get("image") or "")
         messages.append({"out": bool(row.get("out")), "autor": me if row.get("out") else (author or "Contato"), "hora": when,
                          "texto": " ".join(str(row.get("text") or "").split()), "audio": bool(row.get("audio")),
@@ -261,14 +263,14 @@ def _rows(page, limit: int, images: int = 0) -> list[dict]:
 
 
 @browser._on_browser_thread
-def _chats(ctx=None) -> list[dict]:
+def _web_chats(ctx=None) -> list[dict]:
     page = _wa_page(ctx)
     progress("Lendo a lista de conversas")
     return clean_chats(page.evaluate(CHATS_JS))
 
 
 @browser._on_browser_thread
-def _read(contact: str, limit: int, images: int = 4, ctx=None) -> tuple[str, list[dict]]:
+def _web_read(contact: str, limit: int, images: int = 4, ctx=None) -> tuple[str, list[dict]]:
     page = _wa_page(ctx)
     progress(f"Abrindo a conversa: {contact}", 0.4)
     name = _open_chat(page, contact)
@@ -277,14 +279,14 @@ def _read(contact: str, limit: int, images: int = 4, ctx=None) -> tuple[str, lis
 
 
 @browser._on_browser_thread
-def replied(contact: str, ctx=None) -> bool:
+def _web_replied(contact: str, ctx=None) -> bool:
     page = _wa_page(ctx)
     _open_chat(page, contact)
     return last_is_mine(_rows(page, 5))
 
 
 @browser._on_browser_thread
-def _audio(contact: str, which: int, silent: bool, ctx=None) -> tuple[str, str]:
+def _web_audio(contact: str, which: int, silent: bool, ctx=None) -> tuple[str, str]:
     """Toca o áudio pedido (1 = o mais recente). Em silêncio, devolve o arquivo de som como data URL."""
     page = _wa_page(ctx)
     progress(f"Abrindo a conversa: {contact}", 0.3)
@@ -307,7 +309,7 @@ def _audio(contact: str, which: int, silent: bool, ctx=None) -> tuple[str, str]:
 
 
 @browser._on_browser_thread
-def _send(contact: str, message: str, check_first: bool = False, ctx=None) -> tuple[str, bool]:
+def _web_send(contact: str, message: str, check_first: bool = False, ctx=None) -> tuple[str, bool]:
     """Envia e devolve (nome da conversa, já tinha sido enviada?). Com `check_first`, a tentativa
     anterior teve resultado incerto: confere a conversa antes de digitar, para não duplicar."""
     page = _wa_page(ctx)
@@ -330,14 +332,121 @@ def _send(contact: str, message: str, check_first: bool = False, ctx=None) -> tu
     return name, False
 
 
-def transcribe(data_url: str, cfg: dict) -> str:
+@browser._on_browser_thread
+def _web_connect(ctx=None) -> bool:
+    """Abre o WhatsApp Web; devolve se já está conectado."""
+    try:
+        _wa_page(ctx)
+        return True
+    except RuntimeError as exc:
+        if "falta conectar" in str(exc):
+            return False
+        raise
+
+
+# ---- escolha do caminho: direto (GoWA) ou WhatsApp Web --------------------------------
+def _service(ctx):
+    """O serviço direto, quando instalado e ligado; None para usar o WhatsApp Web."""
+    service = getattr(ctx, "gowa", None)
+    settings = getattr(ctx, "settings", None)
+    if service is None or not service.installed or service.failed:
+        return None
+    if settings is not None and not settings.get("whatsapp.direto"):
+        return None
+    return service
+
+
+def _direct(ctx):
+    """Serviço direto pronto e conectado, ou None. Conectado é exigência: sem ele, explica como parear."""
+    service = _service(ctx)
+    if service is None:
+        return None
+    if not service.wait_ready(20):
+        if service.failed:
+            return None                               # o serviço não subiu: segue pelo WhatsApp Web
+        raise RuntimeError("o serviço do WhatsApp ainda está iniciando; tente de novo em alguns segundos")
+    if not service.logged_in():
+        raise RuntimeError("falta conectar o WhatsApp: chame whatsapp_conectar para mostrar o QR code na tela, "
+                           "ou com modo codigo e o telefone do usuário para gerar um código de pareamento")
+    return service
+
+
+def _chats(ctx=None) -> list[dict]:
+    service = _direct(ctx)
+    if service is None:
+        return _web_chats(ctx=ctx)
+    progress("Lendo a lista de conversas")
+    return clean_chats(service.chat_list())
+
+
+def _read(contact: str, limit: int, images: int = 4, ctx=None) -> tuple[str, list[dict]]:
+    service = _direct(ctx)
+    if service is None:
+        return _web_read(contact, limit, images, ctx=ctx)
+    progress(f"Abrindo a conversa: {contact}", 0.3)
+    name, jid = service.resolve(contact)
+    progress("Lendo as mensagens", 0.6)
+    return name, service.rows(jid, limit, images)
+
+
+def replied(contact: str, ctx=None) -> bool:
+    service = _direct(ctx)
+    if service is None:
+        return _web_replied(contact, ctx=ctx)
+    _, jid = service.resolve(contact)
+    return last_is_mine(service.rows(jid, 5))
+
+
+def _audio(contact: str, which: int, silent: bool, ctx=None) -> tuple[str, bytes]:
+    """Áudio pedido (1 = o mais recente). Em silêncio devolve o arquivo; senão toca e devolve b""."""
+    service = _direct(ctx)
+    if service is None:
+        name, data = _web_audio(contact, which, silent, ctx=ctx)
+        return name, base64.b64decode(data.split(",", 1)[1]) if data else b""
+    progress(f"Abrindo a conversa: {contact}", 0.3)
+    name, jid = service.resolve(contact)
+    audios = [row for row in service.rows(jid, 40) if row["audio"] and row["id"]]
+    if not audios:
+        raise RuntimeError("não encontrei mensagem de áudio nas mensagens recentes dessa conversa")
+    progress("Baixando o áudio", 0.5)
+    raw = service.download(audios[-max(1, min(len(audios), int(which)))]["id"], jid)
+    if silent:
+        return name, raw
+    player = getattr(ctx, "audio", None)
+    if player is None:
+        raise RuntimeError("as caixas de som da Viv não estão disponíveis; posso ouvir em silêncio")
+    progress("Tocando o áudio", 0.8)
+    player.play(direct.decode_pcm(raw))
+    return name, b""
+
+
+def _send(contact: str, message: str, check_first: bool = False, ctx=None) -> tuple[str, bool]:
+    """Envia e devolve (nome da conversa, já tinha sido enviada?). Com `check_first`, a tentativa
+    anterior teve resultado incerto: confere a conversa antes de enviar, para não duplicar."""
+    service = _direct(ctx)
+    if service is None:
+        return _web_send(contact, message, check_first, ctx=ctx)
+    progress(f"Abrindo a conversa: {contact}", 0.4)
+    name, jid = service.resolve(contact)
+    if _fold(name) != _fold(contact):                  # o cartão confirmou um nome; só envia para ele
+        raise RuntimeError(f"a conversa encontrada é “{name}”, não “{contact}”; nada foi enviado. Confirme o nome exato")
+    if check_first and already_sent(service.rows(jid, 8), message):
+        return name, True
+    progress("Enviando a mensagem", 0.8)
+    try:
+        service.send(jid, message)
+    except direct.Uncertain as exc:
+        raise SendUncertain(str(exc)) from None
+    return name, False
+
+
+def transcribe(raw: bytes, cfg: dict) -> str:
     """Transcreve um áudio no próprio computador (Whisper), sem tocar nada."""
     from faster_whisper import WhisperModel
     name = cfg.get("tools", {}).get("whatsapp", {}).get("whisper_model", "small")
     if name not in _WHISPER:
         progress("Preparando o reconhecimento de fala", 0.7)
         _WHISPER[name] = WhisperModel(name, device="cpu", compute_type="int8")
-    raw = base64.b64decode(data_url.split(",", 1)[1])
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "audio"
         path.write_bytes(raw)
@@ -407,12 +516,59 @@ def whatsapp_ler(contato, quantidade=12, ctx=None):
 def whatsapp_audio(contato, modo="silencio", qual=1, ctx=None):
     people = _people(ctx)
     silent = _fold(modo) != "tocar"
-    name, data = _audio(people.resolve(contato), qual, silent, ctx=ctx)
+    name, raw = _audio(people.resolve(contato), qual, silent, ctx=ctx)
     label = people.label(name)
     if not silent:
         return f"tocando o áudio de {label} nas caixas de som; espere terminar antes de falar"
-    text = transcribe(data, ctx.cfg)
+    text = transcribe(raw, ctx.cfg)
     return f"áudio de {label}, ouvido em silêncio: “{text}”" if text else "ouvi o áudio, mas não consegui entender o que foi dito"
+
+
+@tool("whatsapp_conectar", "Conectar a Viv ao WhatsApp do usuário. `modo` “qr” mostra o QR code na tela para ele ler "
+      "com o celular (WhatsApp > Aparelhos conectados > Conectar aparelho); “codigo” gera um código de 8 letras para "
+      "digitar no celular em Conectar com número de telefone, e precisa do telefone dele com DDD. Use quando outra "
+      "ferramenta do WhatsApp disser que falta conectar.",
+      {"modo": {"type": "string", "description": "qr | codigo", "required": False},
+       "telefone": {"type": "string", "description": "só para o modo codigo", "required": False}},
+      card=False, title="Conectar WhatsApp")
+def whatsapp_conectar(modo="qr", telefone="", ctx=None):
+    service = _service(ctx)
+    if service is None:
+        if _web_connect(ctx=ctx):
+            return "o WhatsApp Web já está conectado"
+        return "abri o WhatsApp Web no navegador; peça ao usuário para ler o QR code com o celular e repetir o pedido"
+    if not service.wait_ready(20):
+        raise RuntimeError("o serviço do WhatsApp não iniciou; confira com viv_diagnostico")
+    if service.logged_in():
+        return "o WhatsApp já está conectado"
+
+    def connected():
+        BUS.emit("whatsapp", "WhatsApp conectado", mode="conectado")
+        BUS.emit("card", "WhatsApp conectado", kind="action", body="Pronto: já posso ler e responder suas conversas.", ok=True)
+
+    if _fold(modo).startswith("cod"):
+        code = service.pair_code(telefone)
+        BUS.emit("whatsapp", "Conectar WhatsApp", mode="conectar", code=code)
+        service.watch_login(connected)
+        return (f"código {code} na tela. No celular: WhatsApp > Aparelhos conectados > Conectar aparelho > Conectar com "
+                "número de telefone, e digite o código. Eu aviso quando conectar")
+    image, seconds = service.qr()
+    BUS.emit("whatsapp", "Conectar WhatsApp", mode="conectar", qr=image)
+    service.watch_login(connected, lambda fresh: BUS.emit("whatsapp", "Conectar WhatsApp", mode="conectar", qr=fresh),
+                        qr_seconds=seconds)
+    return ("QR code na tela. No celular: WhatsApp > Aparelhos conectados > Conectar aparelho, e aponte para a tela. "
+            "Eu aviso quando conectar")
+
+
+@tool("whatsapp_desconectar", "Desconectar a Viv do WhatsApp do usuário (o aparelho “Viv” some da lista de aparelhos "
+      "conectados do celular). Exige confirmação.", {}, dangerous=True, title="Desconectar WhatsApp",
+      confirm=lambda args: "Desconectar a Viv do seu WhatsApp")
+def whatsapp_desconectar(ctx=None):
+    service = _service(ctx)
+    if service is None or not service.wait_ready(10):
+        return "o WhatsApp direto não está em uso; para sair do WhatsApp Web, use o menu da própria página"
+    service.logout()
+    return "desconectado; para voltar, use whatsapp_conectar"
 
 
 @tool("whatsapp_enviar", "Enviar uma mensagem de texto pelo WhatsApp. Sempre exige confirmação do usuário. Aceita o apelido "

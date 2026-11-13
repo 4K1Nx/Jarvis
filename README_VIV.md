@@ -71,11 +71,25 @@ Tarefas que passam de um segundo (pesquisa profunda, programar, criar documentos
 
 ### WhatsApp e pessoas
 
-“Viv, tem mensagem nova?”, “lê a conversa da minha mãe”, “manda para o chefe que eu chego às nove”. Ela usa o WhatsApp Web no navegador que já controla: na primeira vez, abre a página para você ler o QR code (WhatsApp > Aparelhos conectados); a sessão fica guardada em `data/browser-profile/`. Enviar sempre pede confirmação, e o cartão mostra o nome real do contato e o texto exato.
+“Viv, tem mensagem nova?”, “abre a conversa da minha mãe”, “ouve o áudio da Bia em silêncio”, “responde o chefe”. Enviar sempre pede confirmação, e o cartão mostra o nome real do contato e o texto exato.
+
+**WhatsApp direto (recomendado).** A Viv conversa com o WhatsApp por um serviço local, o GoWA (o mesmo que o Kardap.IA usa), sem abrir navegador:
+
+```bat
+.venv\Scripts\python.exe scripts\instalar_whatsapp.py
+```
+
+O script baixa o GoWA 9.6.0, confere o SHA-256 e instala em `bin/gowa/`. Depois, com a Viv aberta: “Viv, conecta meu WhatsApp”. Aparece um QR code na tela (WhatsApp > Aparelhos conectados > Conectar aparelho); se preferir, “conecta pelo código” gera um código para digitar no celular. O aparelho aparece no celular como “Viv”; para desconectar, diga “Viv, desconecta meu WhatsApp” ou remova pelo celular.
+
+- O serviço sobe e fecha junto com a Viv, escuta só neste computador (`127.0.0.1`), com senha nova a cada início. Os dados da sessão ficam em `data/gowa/`.
+- Ler pelo caminho direto não marca nada como lido no celular. Fotos e áudios são baixados só quando ela precisa e apagados logo depois.
+- Mensagens novas aparecem na tela na hora, só com o nome de quem mandou (Configurações > “Avisar mensagens novas do WhatsApp”). Grupos não avisam.
+- “Pendentes” são conversas em que a última mensagem é da outra pessoa e chegou há menos de 48 horas.
+- Desligando “WhatsApp direto” em Configurações, ou se o serviço não estiver instalado, ela volta a usar o WhatsApp Web no navegador, com a sessão em `data/browser-profile/`; nesse modo, abrir uma conversa marca como lida.
 
 Conte quem é quem (“a Maria Silva é minha mãe”) e a Viv guarda a pessoa com um apelido ou a relação, em `data/viv_pessoas.json`, e passa a se referir a ela assim. “Viv, quem você conhece?” mostra a lista.
 
-O WhatsApp não oferece API para conta pessoal; a Viv lê a página como você leria. Se o WhatsApp mudar a página, os seletores ficam no topo de `viv/tools/whatsapp.py`. As mensagens lidas são enviadas ao Gemini para ela resumir.
+O WhatsApp não oferece API para conta pessoal: os dois caminhos são clientes não oficiais ligados à sua conta, e o WhatsApp não os autoriza formalmente. Se o WhatsApp mudar a página, os seletores do modo navegador ficam no topo de `viv/tools/whatsapp.py`. As mensagens lidas são enviadas ao Gemini para ela resumir; os áudios em silêncio são transcritos no próprio computador.
 
 ### Conversas e planos com pessoas próximas
 

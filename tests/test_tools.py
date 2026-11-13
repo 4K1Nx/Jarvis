@@ -17,7 +17,7 @@ EXPECTED = {
     "documento_criar", "documento_ler", "pesquisa_profunda",
     "habilidade_salvar", "habilidade_remover", "habilidade_listar", "viv_diagnostico",
     "pessoa_definir", "pessoa_listar", "pessoa_esquecer", "voz_quem_fala",
-    "whatsapp_conversas", "whatsapp_ler", "whatsapp_enviar", "whatsapp_abrir", "whatsapp_audio",
+    "whatsapp_conversas", "whatsapp_ler", "whatsapp_enviar", "whatsapp_abrir", "whatsapp_audio", "whatsapp_conectar", "whatsapp_desconectar",
     "trecho_colado", "mensagem_preparar", "mensagem_rascunhar", "mensagem_copiar", "mensagem_cancelar", "pessoa_estilo",
     "consentimento_registrar", "consentimento_revogar", "relacoes_ver", "relacoes_apagar", "retomar_marcar",
     "retomar_resolver", "presente_salvar", "pessoa_aniversario", "lista_guardar", "encontro_planejar",

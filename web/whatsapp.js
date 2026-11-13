@@ -113,8 +113,36 @@
     requestAnimationFrame(() => { body.scrollTop = body.scrollHeight; });
   }
 
+  // ---- conectar o WhatsApp: QR code ou código ------------------------------------------------
+  const QR = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/;
+
+  function connect(event) {
+    const current = root.querySelector('.wa-connect.in');
+    if (current && event.qr && QR.test(event.qr)) {          // QR renovado: troca só a imagem
+      const img = current.querySelector('.wa-qr');
+      if (img) { img.src = event.qr; return; }
+    }
+    const card = el('article', 'wa-card wa-connect');
+    card.setAttribute('aria-label', 'Conectar WhatsApp');
+    card.append(head('Conectar WhatsApp', '', 0, true));
+    const body = el('div', 'wa-connect-body');
+    if (event.qr && QR.test(event.qr)) {
+      const img = el('img', 'wa-qr'); img.alt = 'QR code para conectar o WhatsApp'; img.src = event.qr;
+      body.append(img, el('p', null, 'No celular: WhatsApp › Aparelhos conectados › Conectar aparelho, e aponte para cá.'));
+    } else if (/^[A-Z0-9-]{6,12}$/i.test(event.code || '')) {
+      body.append(el('p', 'wa-code', event.code),
+        el('p', null, 'No celular: WhatsApp › Aparelhos conectados › Conectar aparelho › Conectar com número de telefone.'));
+    } else {
+      return;
+    }
+    card.append(body);
+    mount(card, 180000);
+  }
+
   // ---- ligação com a fala da Viv ----------------------------------------------------------
   function handle(event) {
+    if (event.mode === 'conectar') { queue = null; connect(event); return; }
+    if (event.mode === 'conectado') { clear(); return; }
     if (event.mode === 'chat') { queue = null; chat(event); return; }
     if (event.mode !== 'lista') return;
     queue = Array.isArray(event.chats) ? event.chats : [];

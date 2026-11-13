@@ -398,3 +398,20 @@ def test_whatsapp_chat_opens_with_bubbles_photos_and_audio_and_never_parses_html
     emit(page, channel="state", state="sleeping")
     page.wait_for_timeout(600)
     assert page.locator(".wa-card").count() == 0 and page.errors == []
+
+
+def test_whatsapp_connect_card_shows_qr_or_code_and_closes_when_connected(page):
+    qr = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    emit(page, channel="whatsapp", text="Conectar WhatsApp", mode="conectar", qr=qr)
+    page.wait_for_selector(".wa-connect.in .wa-qr")
+    emit(page, channel="whatsapp", text="Conectar WhatsApp", mode="conectar", qr=qr.replace("A60e6", "A60e7"))
+    assert page.locator(".wa-connect").count() == 1, "QR renovado troca a imagem, não abre outro cartão"
+    emit(page, channel="whatsapp", text="WhatsApp conectado", mode="conectado")
+    page.wait_for_timeout(600)
+    assert page.locator(".wa-card").count() == 0
+    emit(page, channel="whatsapp", text="Conectar WhatsApp", mode="conectar", code="ABCD-1234")
+    page.wait_for_selector(".wa-connect.in")
+    assert page.text_content(".wa-code") == "ABCD-1234"
+    emit(page, channel="whatsapp", text="Conectar WhatsApp", mode="conectar", qr="https://evil.example/qr.png")
+    page.wait_for_timeout(300)
+    assert page.locator("#wa img").count() == 0 and page.errors == []

@@ -41,6 +41,14 @@ def checks(ctx) -> list[tuple[str, bool, str]]:
     rows = [("Conexão com o Gemini", ctx.client is not None, "" if ctx.client is not None else "chave ausente no .env")]
     voiceprint = Path(cfg.get("speaker_id", {}).get("voiceprint_path", "data/voiceprint.json"))
     rows.append(("Cadastro de voz", voiceprint.exists(), "" if voiceprint.exists() else "rode cadastrar_voz.bat"))
+    service = getattr(ctx, "gowa", None)
+    if service is None or not service.installed:
+        rows.append(("WhatsApp direto", False, "rode scripts/instalar_whatsapp.py; até lá, a Viv usa o WhatsApp Web"))
+    elif service.failed or not service.wait_ready(5):
+        rows.append(("WhatsApp direto", False, "o serviço local não iniciou"))
+    else:
+        connected = service.logged_in()
+        rows.append(("WhatsApp direto", connected, "" if connected else "falta conectar: diga “Viv, conecta meu WhatsApp”"))
     mail = bool(ctx.settings is not None and ctx.settings.get("email.usuario") and os.environ.get("VIV_EMAIL_SENHA"))
     rows.append(("E-mail", mail, "" if mail else "falta o endereço ou a senha de app"))
     for label, module in LIBRARIES.items():

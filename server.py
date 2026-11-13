@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 
 
-def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=None) -> FastAPI:
+def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=None, gowa=None) -> FastAPI:
     app = FastAPI(title="Viv", docs_url=None, redoc_url=None, openapi_url=None)
     port = cfg.get("server", {}).get("port", 8765)
     allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
@@ -124,6 +124,19 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
         if not path.is_file():
             raise HTTPException(404, "sem captura")
         return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/whatsapp/evento")
+    async def whatsapp_event(request: Request):
+        """Mensagens novas do serviço local do WhatsApp. Sem Origin (não vem do navegador): vale só de
+        127.0.0.1 e com a assinatura HMAC do segredo sorteado ao iniciar o serviço."""
+        if gowa is None:
+            raise HTTPException(404, "WhatsApp direto desligado")
+        body = (await request.body())[:2_000_000]
+        host = request.client.host if request.client else ""
+        accepted = await asyncio.to_thread(gowa.webhook, body, request.headers.get("x-hub-signature-256", ""), host)
+        if not accepted:
+            raise HTTPException(403, "assinatura inválida")
+        return {"ok": True}
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket):

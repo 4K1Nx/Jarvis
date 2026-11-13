@@ -38,6 +38,7 @@ class Parts:
     routine: Any = None
     watch: Any = None
     relations: Any = None
+    gowa: Any = None
 
 
 RAIN_CODES = {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99}     # códigos de chuva da Open-Meteo
@@ -70,6 +71,7 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     from viv.mood import Mood
     from viv.people import People
     from viv.relations import Relations, RelationsClock
+    from viv.gowa import Gowa
     from viv.reminders import Reminders
     from viv.safety import Gate
     from viv.speaker import Speaker
@@ -91,8 +93,15 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
     mood = Mood(enabled=settings.get("humor.ativo"), refusals=settings.get("humor.recusa"))
     people = People()
     relations = Relations(label=people.label)
+
+    def new_message(jid, name):
+        """Mensagem nova no WhatsApp: só o aviso de quem mandou, nunca o conteúdo."""
+        if settings.get("whatsapp.avisar_novas"):
+            BUS.emit("card", f"WhatsApp: mensagem de {people.label(name)}", kind="action",
+                     body="Diga “Viv, lê a mensagem”.", ok=True)
+    gowa = Gowa(cfg, int(cfg.get("server", {}).get("port", 8765)), on_message=new_message)
     ctx = Context(cfg, memory=memory, client=client, settings=settings, people=people, speaker=speaker, mood=mood,
-                  relations=relations)
+                  relations=relations, gowa=gowa, audio=audio)
     gate = Gate(cfg, ctx, speaker, Audit(cfg), notify=lambda text: None)
     gate.mood = mood
     watcher = WakeWatcher(cfg, audio, on_wake=lambda reason: viv.wake(reason))
@@ -128,7 +137,7 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
         elif key == "voz.nome":
             cfg.setdefault("live", {})["voice"] = value
     settings.on_change(apply_setting)
-    app = create_app(viv, gate, audio, cfg, speaker, settings, mood)
+    app = create_app(viv, gate, audio, cfg, speaker, settings, mood, gowa)
 
     def private_notice(title, text):
         """Lembrete pessoal: por padrão só na tela; em voz alta se o usuário ligou."""
@@ -149,7 +158,7 @@ def build(cfg: dict, connect, audio=None, client=None) -> Parts:
 
     return Parts(viv, gate, memory, reminders, audio, speaker, watcher, app, settings,
                  RoutineClock(settings, viv.notify), ctx.watch,
-                 RelationsClock(relations, settings, private_notice, replied, raining))
+                 RelationsClock(relations, settings, private_notice, replied, raining), gowa)
 
 
 def welcome(parts: Parts, delay: float = 6.0) -> None:
@@ -283,6 +292,8 @@ def run_full(cfg: dict, show: bool, briefing: bool = False) -> int:
     parts.reminders.start()
     parts.routine.start()
     parts.relations.start()
+    if parts.gowa.start():
+        print("WhatsApp direto: iniciando o serviço local.")
     if briefing and parts.settings.get("inicio.boas_vindas"):
         threading.Thread(target=welcome, args=(parts,), daemon=True, name="viv-boas-vindas").start()
 
@@ -304,6 +315,7 @@ def run_full(cfg: dict, show: bool, briefing: bool = False) -> int:
         parts.reminders.stop()
         parts.routine.stop()
         parts.relations.stop()
+        parts.gowa.stop()
         parts.watch.stop()
         parts.audio.stop()
     return 0

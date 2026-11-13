@@ -26,6 +26,8 @@ class Context:
     speaker: Any = None
     mood: Any = None
     relations: Any = None
+    gowa: Any = None
+    audio: Any = None
 
 
 def tool(name: str, description: str, params: dict, dangerous: bool = False,

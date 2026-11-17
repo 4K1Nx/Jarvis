@@ -199,7 +199,7 @@ def test_creates_word_pdf_slides_and_sheet_that_can_be_read_back(folders):
     deck, outline = docs.create(None, "pptx", "Plano", "x", ask=answers(
         {"subtitulo": "2027", "slides": [{"titulo": "Metas", "topicos": ["Crescer", "Simplificar"], "notas": "falar das metas"}]}))
     text = docs.read_document(deck)
-    assert "Plano" in text and "Metas" in text and "Crescer" in text and "1. **Metas**" in outline
+    assert "Plano" in text and "Metas" in text and "Crescer" in text and "2. **Metas** (topicos)" in outline
 
     sheet, table = docs.create(None, "xlsx", "Gastos", "x", ask=answers(
         {"abas": [{"nome": "Mês", "colunas": ["Item", "Valor"], "linhas": [["Luz", 120.5], ["Total", "=SUM(B2:B2)"]]}]}))

@@ -61,14 +61,40 @@ def panel(data: dict) -> str:
     return "\n".join(rows)
 
 
+def tiles(data: dict) -> dict:
+    """O mesmo resumo, estruturado para o painel desenhado da HUD: hora, clima, números e listas."""
+    numbers = []
+    if "emails_nao_lidos" in data:
+        numbers.append({"label": "e-mails não lidos", "value": data["emails_nao_lidos"]})
+    if "whatsapp" in data:
+        numbers.append({"label": "conversas esperando", "value": len(data["whatsapp"])})
+    numbers.append({"label": "lembretes", "value": len(data.get("lembretes", []))})
+    if "disco_livre_pct" in data:
+        numbers.append({"label": "de disco livre", "value": f"{data['disco_livre_pct']}%",
+                        "tone": "bad" if data["disco_livre_pct"] < 10 else ""})
+    if data.get("erros"):
+        numbers.append({"label": "erros em 24 h", "value": data["erros"], "tone": "bad"})
+    clima = data.get("clima")
+    lists = [{"titulo": "Rotina de hoje", "itens": list(data.get("rotina", []))},
+             {"titulo": "Lembretes", "itens": list(data.get("lembretes", []))},
+             {"titulo": "WhatsApp esperando resposta",
+              "itens": [f"{c['label']} ({c['unread']})" for c in data.get("whatsapp") or []]}]
+    return {"hora": data["hora"], "dia": data["dia"], "numeros": numbers[:4], "listas": [g for g in lists if g["itens"]],
+            "clima": {k: clima[k] for k in ("city", "temp", "desc", "max", "rain")} if clima else None}
+
+
 def prompt(data: dict) -> str:
     """Texto entregue ao modelo; ele transforma em fala."""
-    lines = ["O computador acabou de ser ligado e você iniciou junto com ele.",
+    lines = [(f"O computador foi ligado às {data['ligado_em']} e você iniciou junto, dormindo. O usuário acabou de te "
+              "acordar pela primeira vez: antes de qualquer outra coisa, dê o resumo de tudo."
+              if data.get("ligado_em") else "O computador acabou de ser ligado e você iniciou junto com ele."),
              "Dê as boas-vindas ao usuário como uma assistente pessoal atenta: cumprimente conforme a hora"
              + (f", chamando-o de {data['nome']}" if data.get("nome") else "")
              + ", diga a hora e faça um relatório falado, natural e curto (no máximo cinco frases) com o que importa "
-               "dos dados abaixo. Não leia listas inteiras nem números demais; o painel na tela tem os detalhes. "
-               "Mencione um problema só se houver. Termine oferecendo ajuda.",
+               "dos dados abaixo e dos outros avisos desta mensagem (ex.: um projeto que o agente de código terminou "
+               "enquanto você dormia). Não leia listas inteiras nem números demais; o painel na tela tem os detalhes. "
+               "Mencione um problema só se houver. Se o usuário já tiver pedido algo ao te acordar, faça o resumo em "
+               "duas frases e atenda o pedido. Termine oferecendo ajuda.",
              f"Agora: {data['hora']}, {data['dia']}."]
     clima = data.get("clima")
     if clima:

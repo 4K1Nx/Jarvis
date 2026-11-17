@@ -8,7 +8,7 @@
   const rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
   const COLORS = { rose: rgb(hex('--viv-rose')), violet: rgb(hex('--viv-violet')), cyan: rgb(hex('--viv-cyan')), danger: rgb(hex('--viv-danger')) };
   const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${Math.max(0, Math.min(1, a))})`;
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches && document.documentElement.dataset.motion !== 'full';   // reduzido só sem “Animações completas”
 
   // glow: brilho geral; speed: giro dos anéis; open: abertura dos anéis; wave: amplitude da onda;
   // pull: quanto as partículas convergem para o centro; a/b: cores principal e secundária.
@@ -26,6 +26,7 @@
   const levels = { mic: 0, out: 0 };
   const cur = { glow: .22, speed: .12, open: .9, wave: .1, pull: 0, a: COLORS.violet.slice(), b: COLORS.violet.slice() };
   let level = 0, spin = 0, last = performance.now();
+  const waves = [];          // ondas que saem do núcleo quando o estado muda: {at, color}
 
   const particles = Array.from({ length: 84 }, (_, i) => ({
     angle: Math.random() * Math.PI * 2, orbit: 1.2 + Math.random() * .95,
@@ -57,15 +58,15 @@
     for (let i = 0; i < 3; i++) { cur.a[i] = mix(cur.a[i], COLORS[look.a][i], ease); cur.b[i] = mix(cur.b[i], COLORS[look.b][i], ease); }
     const target = state === 'speaking' ? levels.out : state === 'listening' ? levels.mic : Math.max(levels.mic, levels.out) * .25;
     level = mix(level, target, target > level ? .35 : .08);
-    spin += dt * cur.speed * (calm ? .2 : 1);
+    spin += dt * cur.speed * (calm() ? .2 : 1);
     const breath = Math.sin(t * (state === 'sleeping' ? .9 : 1.7)) * .5 + .5;
 
     ctx.clearRect(0, 0, W, H);
     ctx.save();
     const sinceChange = now - stateAt;
-    if (state === 'error' && sinceChange < 520 && !calm) {
-      const amp = (1 - sinceChange / 520) * 7;
-      ctx.translate((Math.random() - .5) * amp, (Math.random() - .5) * amp);
+    if (state === 'error' && sinceChange < 700 && !calm()) {           // tremor amortecido, não aleatório
+      const k = sinceChange / 700;
+      ctx.translate(Math.sin(sinceChange / 22) * 6 * (1 - k) * (1 - k), 0);
     }
 
     // halo
@@ -134,9 +135,21 @@
     core.addColorStop(1, rgba(cur.b, 0));
     ctx.fillStyle = core; ctx.beginPath(); ctx.arc(cx, cy, heart, 0, Math.PI * 2); ctx.fill();
 
+    // ondas de mudança de estado: um anel fino que se expande e some, com desaceleração
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const k = (now - waves[i].at) / 1100;
+      if (k >= 1) { waves.splice(i, 1); continue; }
+      const out = 1 - Math.pow(1 - k, 3);
+      ctx.lineWidth = 1.5 * (1 - k) + .5;
+      ctx.shadowBlur = 12; ctx.shadowColor = rgba(waves[i].color, .6 * (1 - k));
+      ctx.strokeStyle = rgba(waves[i].color, .55 * (1 - k) * (1 - k));
+      ctx.beginPath(); ctx.arc(cx, cy, R * (.9 + out * .95), 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
     // partículas
     for (const p of particles) {
-      p.angle += dt * p.speed * (.4 + cur.speed * .6) * (calm ? .2 : 1);
+      p.angle += dt * p.speed * (.4 + cur.speed * .6) * (calm() ? .2 : 1);
       const pulse = cur.pull * (.5 + .5 * Math.sin(t * 2.2 + p.phase));
       const orbit = R * mix(p.orbit, .62, pulse * .8) * cur.open;
       const x = cx + Math.cos(p.angle) * orbit, y = cy + Math.sin(p.angle) * orbit * .98;
@@ -148,7 +161,12 @@
   }
 
   window.VivCore = {
-    setState(next) { if (LOOK[next] && next !== state) { state = next; stateAt = performance.now(); } },
+    setState(next) {
+      if (!LOOK[next] || next === state) return;
+      state = next; stateAt = performance.now();
+      if (!calm() && next !== 'sleeping') waves.push({ at: stateAt, color: COLORS[LOOK[next].a].slice() });
+      if (waves.length > 3) waves.shift();
+    },
     setLevel(source, value) { if (source in levels) levels[source] = Math.max(0, Math.min(1, +value || 0)); },
     center() { return { x: cx, y: cy, r: R * 1.6 }; },
     // cores do humor: principal, secundária e destaque; o desenho desliza até elas sozinho

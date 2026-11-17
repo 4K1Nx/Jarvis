@@ -14,12 +14,15 @@ wake:
   clap_max_gap_ms: 700
   hotkey: ctrl+alt+v
 speaker_id: {enabled: true, voiceprint_path: data/voiceprint.json, privileged_threshold: 0.78, short_threshold: 0.62, people_path: data/voiceprints.json, enroll_clips: 8}
+tasks: {background_after_seconds: 4}   # ferramenta que passa disso segue em segundo plano e avisa no fim
 safety:
   confirm_timeout_seconds: 30
   dangerous: [system_power, system_kill, fs_delete, fs_write, files_move, files_append_text, files_replace_text, desktop_run_command]
 tools:
   browser: {headless: false, timeout_ms: 15000}
   vision: {model: gemini-3.8-flash, screenshot_path: data/screen.png}
+  code: {ollama_model: qwen2.5-coder:7b}   # modelo local do agente_programar com agente "ollama" (ollama pull ...)
+  local: {mode: reserva, text_model: "qwen3:8b", vision_model: "gemma3:4b", models_dir: 'E:\IA\Models'}   # Ollama: reserva | economia | desligado (ajuste ia.local)
 memory: {path: data/viv_memoria.json}
 reminders: {path: data/jobs.json}
 audit: {path: data/audit.jsonl}

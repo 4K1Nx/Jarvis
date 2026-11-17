@@ -62,3 +62,51 @@ def test_demo_mode_does_not_import_sounddevice():
             "print('sounddevice' in sys.modules)")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert out.stdout.strip().endswith("False"), out.stderr[-500:]
+
+
+CFG_PORTS = {"server": {"port": 8765}}
+
+
+def test_boot_start_leaves_running_viv_alone():
+    killed = []
+    assert main.single_instance(CFG_PORTS, briefing=True, find=lambda ports: object(), kill=killed.append) is False
+    assert killed == []
+
+
+def test_manual_start_replaces_running_viv():
+    state = {"old": object()}
+    killed = []
+
+    def find(ports):
+        assert ports == (8765, 8766)
+        return state["old"]
+
+    def kill(proc):
+        killed.append(proc)
+        state["old"] = None
+    assert main.single_instance(CFG_PORTS, briefing=False, find=find, kill=kill, wait=lambda s: None) is True
+    assert len(killed) == 1
+
+
+def test_manual_start_reports_viv_that_does_not_close():
+    import pytest
+    with pytest.raises(RuntimeError, match="não fechou"):
+        main.single_instance(CFG_PORTS, briefing=False, find=lambda ports: object(), kill=lambda p: None,
+                             wait=lambda s: None)
+
+
+def test_no_running_viv_starts_normally():
+    assert main.single_instance(CFG_PORTS, briefing=False, find=lambda ports: None) is True
+
+
+def test_port_taken_by_other_program_is_reported():
+    import psutil
+    import pytest
+    conn = type("C", (), {"status": psutil.CONN_LISTEN, "laddr": type("A", (), {"port": 8765})(), "pid": 5})()
+    other = type("P", (), {"cmdline": lambda s: ["nginx.exe"], "name": lambda s: "nginx.exe"})()
+    with pytest.raises(RuntimeError, match="outro programa"):
+        main.running_viv((8765, 8766), net_connections=lambda kind: [conn], process=lambda pid: other)
+    launcher = type("P", (), {"cmdline": lambda s: [".venv/python.exe", "main.py"], "parent": lambda s: None})()
+    viv = type("P", (), {"cmdline": lambda s: ["python.exe", "-u", "main.py"], "name": lambda s: "python.exe",
+                         "parent": lambda s: launcher})()
+    assert main.running_viv((8765, 8766), net_connections=lambda kind: [conn], process=lambda pid: viv) is launcher

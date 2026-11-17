@@ -36,13 +36,13 @@ def cancel_shutdown(ctx=None):
     return "desligamento cancelado"
 
 
-@tool("system_status", "Informar uso de CPU, RAM, disco e bateria.", {}, title="Estado do sistema")
+@tool("system_status", "Informar uso de CPU, memória, disco, rede e bateria agora, com medidores na tela.", {},
+      card=False, title="Estado do sistema")
 def status(ctx=None):
-    import psutil
-    battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
-    disk = psutil.disk_usage(os.path.abspath(os.sep))
-    return (f"CPU {psutil.cpu_percent(interval=0.2):.0f}%, RAM {psutil.virtual_memory().percent:.0f}%, "
-            f"disco {disk.percent:.0f}% usado" + (f", bateria {battery.percent:.0f}%" if battery else ""))
+    from viv.tools import charts, monitor
+    data = monitor.snapshot(0.2)
+    charts.show("Estado do PC", monitor.gauges(data))            # os números aparecem em medidores na tela
+    return monitor.describe(data) + ". Medidores na tela; comente só o que chamar atenção."
 
 
 @tool("system_processes", "Listar os processos que mais usam memória.",

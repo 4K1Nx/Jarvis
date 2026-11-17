@@ -84,7 +84,7 @@ class Audit:
 def gate_with(voice):
     clock, told = Clock(), []
     gate = Gate({"safety": {"confirm_timeout_seconds": 30, "dangerous": []}}, Context({}), voice, Audit(),
-                told.append, clock)
+                told.append, clock, spawn=lambda job: job())
     return gate, clock
 
 

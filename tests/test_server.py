@@ -23,6 +23,18 @@ class FakeViv:
     def sleep(self):
         self.calls.append(("sleep",))
 
+    def hibernate(self):
+        self.calls.append(("hibernate",))
+
+    text_only = False
+
+    def type(self, text):
+        self.calls.append(("type", text))
+
+    def set_text_only(self, on):
+        self.text_only = on
+        self.calls.append(("text_only", on))
+
 
 class FakeGate:
     def __init__(self):
@@ -165,3 +177,24 @@ def test_index_and_static_are_served(env):
 def test_screen_returns_404_without_capture(env):
     client, _, _ = env
     assert client.get("/api/screen").status_code == 404
+
+
+def test_page_stamps_every_static_file_so_updates_are_never_served_stale(env):
+    import re
+    client, _, _ = env
+    page = client.get("/")
+    assert page.headers["cache-control"] == "no-store"
+    links = re.findall(r'/static/[\w.-]+\.(?:js|css)(?=[?"])[^"]*', page.text)
+    assert len(links) >= 8 and all(re.search(r"\?v=\d+$", link) for link in links)
+    assert client.get(links[0]).status_code == 200
+
+
+def test_chat_message_and_mode_reach_viv(env):
+    client, viv, _ = env
+    assert client.post("/api/chat", json={"texto": "  oi,   Viv "}, headers=ORIGIN).status_code == 200
+    assert client.post("/api/chat", json={"texto": "   "}, headers=ORIGIN).status_code == 400
+    assert client.post("/api/chat", json={"texto": "oi"}).status_code == 403
+    assert client.post("/api/chat/modo", json={"so_texto": True}, headers=ORIGIN).json() == {"ok": True, "so_texto": True}
+    assert client.post("/api/hibernate", headers=ORIGIN).status_code == 200
+    assert viv.calls == [("type", "oi, Viv"), ("text_only", True), ("hibernate",)]
+    assert client.get("/api/status").json()["text_only"] is True

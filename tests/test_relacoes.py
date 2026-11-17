@@ -56,7 +56,7 @@ class World:
         self.ctx = Context({}, people=self.people, relations=self.relations, settings=self.settings)
         self.told, self.sent, self.fail = [], [], []
         self.gate = Gate({"safety": {"confirm_timeout_seconds": 30, "dangerous": []}}, self.ctx, Owner(), Audit(),
-                         self.told.append)
+                         self.told.append, spawn=lambda job: job())
         monkeypatch.setattr(drafts.DRAFTS, "current", None)
         monkeypatch.setattr(whatsapp, "People", lambda: self.people)
         monkeypatch.setattr(relacoes, "write_clipboard", lambda text: self.sent.append(("copiado", text)))
@@ -114,6 +114,9 @@ def test_approved_draft_is_sent_once(world):
     assert world.gate.pending["text"] == f"Enviar WhatsApp para {NAMORADA} (Bia): “Chego às 8”"
     assert "mensagem enviada para Bia" in world.yes()
     assert world.sent == [(NAMORADA, "Chego às 8")]
+    again = world.call("whatsapp_enviar", contato="Bia", mensagem="Chego às 8")
+    assert "já foi executado" in again and world.gate.pending is None, "o mesmo pedido logo depois não abre outro cartão"
+    world.gate.last = None                                        # passado o intervalo, a própria ferramenta barra
     world.call("whatsapp_enviar", contato="Bia", mensagem="Chego às 8")
     assert "já foi enviada" in world.yes() and len(world.sent) == 1
 

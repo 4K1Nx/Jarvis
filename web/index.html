@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/static/viv.css">
 </head>
 <body data-state="sleeping">
+<div id="depth" aria-hidden="true"><i></i><i></i></div>
 <canvas id="core" aria-hidden="true"></canvas>
 <svg id="links" aria-hidden="true"></svg>
 
@@ -22,6 +23,7 @@
     <span id="conn" class="conn" hidden>reconectando…</span>
     <span id="mood" class="chip" title="Humor da Viv" hidden></span>
     <span id="who" class="chip" title="Quem está falando, pelo reconhecimento de voz" hidden></span>
+    <span id="present" class="chip" title="Quem está na conversa, pelo reconhecimento de voz" hidden></span>
   </div>
   <div class="meta"><span id="mic" title="Microfone em uso"></span><span id="clock"></span>
     <button id="gear" type="button" aria-label="Configurações" aria-expanded="false" aria-controls="settings">⚙</button></div>
@@ -30,6 +32,7 @@
 <section id="cards" aria-label="Informações e ações"></section>
 <section id="wa" aria-label="WhatsApp" aria-live="polite"></section>
 <section id="confirm-slot" aria-live="assertive"></section>
+<section id="ask-slot" aria-live="polite"></section>
 
 <aside id="settings" aria-label="Configurações" hidden>
   <header><h2>Configurações</h2><button id="settings-close" type="button" aria-label="Fechar">×</button></header>
@@ -48,7 +51,35 @@
 
 <div id="avatar" role="img" aria-label="Viv"><canvas id="avatar-canvas" width="60" height="42"></canvas></div>
 
+<div id="hibernation" aria-hidden="true">
+  <i class="moon"></i>
+  <b>Hibernando</b>
+  <span>Não estou ouvindo. Clique em Ativar Viv ou aperte Ctrl+Alt+V para eu voltar.</span>
+</div>
+
+<section id="chat" aria-label="Chat com a Viv" hidden>
+  <header>
+    <h2>Chat</h2>
+    <div class="chat-modes" role="group" aria-label="Como a Viv responde">
+      <button type="button" data-mode="texto" aria-pressed="false" title="Ela responde só por escrito e o microfone fica fechado">Só texto</button>
+      <button type="button" data-mode="voz" aria-pressed="true" title="Ela responde por escrito e em voz alta">Texto e voz</button>
+    </div>
+    <button id="chat-close" type="button" aria-label="Fechar o chat">×</button>
+  </header>
+  <div class="chat-with">
+    <label for="chat-model">Conversar com</label>
+    <select id="chat-model"><option value="viv">Viv</option></select>
+    <button id="chat-new" type="button" title="Começar a conversa do zero com este modelo" hidden>Nova conversa</button>
+  </div>
+  <div id="chat-list" role="log" aria-live="polite"></div>
+  <form id="chat-form">
+    <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Escreva para a Viv…" aria-label="Mensagem"></textarea>
+    <button type="submit">Enviar</button>
+  </form>
+</section>
+
 <footer class="bottom">
+  <div id="tasks" role="status" aria-live="polite" hidden></div>
   <div id="progress" role="status" aria-live="polite" hidden>
     <span id="progress-label"></span>
     <div class="progress-track"><i id="progress-fill"></i></div>
@@ -57,14 +88,22 @@
     <p id="caption-user" class="caption-user"></p>
     <p id="caption-viv" class="caption-viv"></p>
   </div>
-  <button id="wake" type="button">Ativar Viv</button>
+  <div class="wake-row">
+    <button id="wake" type="button">Ativar Viv</button>
+    <button id="hibernate" type="button" title="Parar de ouvir de vez: só o botão Ativar ou Ctrl+Alt+V acordam">Hibernar</button>
+    <button id="chat-open" type="button" aria-expanded="false" aria-controls="chat" title="Conversar por texto">Chat</button>
+  </div>
   <p id="hint" class="hint">Diga “Ei, Viv”, bata duas palmas ou aperte Ctrl+Alt+V.</p>
 </footer>
 
+<script src="/static/parallax.js"></script>
 <script src="/static/core.js"></script>
+<script src="/static/charts.js"></script>
+<script src="/static/toast.js"></script>
 <script src="/static/cards.js"></script>
 <script src="/static/whatsapp.js"></script>
 <script src="/static/avatar.js"></script>
+<script src="/static/chat.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/settings.js"></script>
 </body>

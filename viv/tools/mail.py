@@ -97,7 +97,8 @@ def _panel(title: str, messages: list[dict]) -> str:
     rows = ["Nº | De | Assunto | Quando"] + [f"{i} | {m['de'][:28]} | {m['assunto'][:70]} | {m['data']}"
                                              for i, m in enumerate(messages, 1)]
     BUS.emit("card", title, kind="content", format="tabela" if messages else "texto",
-             body="\n".join(rows) if messages else "Nenhuma mensagem.", ok=True)
+             body="\n".join(rows) if messages else "Nenhuma mensagem.", ok=True,
+             emails=[{"n": i, "de": m["de"][:60], "assunto": m["assunto"][:120], "data": m["data"]} for i, m in enumerate(messages, 1)])
     return "; ".join(f"{i}. {m['de']}: {m['assunto']}" for i, m in enumerate(messages, 1)) or "nenhuma mensagem"
 
 

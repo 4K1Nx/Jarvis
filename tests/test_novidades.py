@@ -203,7 +203,7 @@ def tools():
 def make_gate(voice=None, mood=None):
     clock, told = Clock(), []
     gate = Gate({"safety": {"confirm_timeout_seconds": 30, "dangerous": []}}, Context({}), voice or Voice(), Audit(),
-                told.append, clock)
+                told.append, clock, spawn=lambda job: job())
     gate.mood = mood
     return gate, clock, told
 
@@ -253,7 +253,7 @@ def test_private_tool_asks_confirmation_only_when_a_stranger_speaks(tools, event
     gate.on_user_utterance("sim", np.zeros(8000, dtype=np.float32))
     assert gate.pending is not None, "a voz de um estranho não libera o conteúdo pessoal"
     gate.on_click(True)
-    assert tools == ["mensagens", "mensagens"] and "3 mensagens" in told[0]
+    assert tools == ["mensagens", "mensagens"] and "3 mensagens" in told[-1]
 
 
 def test_expired_confirmation_does_not_block_the_next_request(tools, events):
@@ -318,9 +318,9 @@ def test_whatsapp_chat_list_is_deduplicated_and_counts_unread():
     rows[0]["photo"] = "https://pps.whatsapp.net/v/foto.jpg"
     rows[4]["photo"] = "javascript:alert(1)"
     assert whatsapp.clean_chats(rows) == [
-        {"name": "Maria Silva", "last": "Chegou bem?", "unread": 2, "photo": "https://pps.whatsapp.net/v/foto.jpg", "group": False, "mine": False, "novas": []},
-        {"name": "Grupo da Família", "last": "foto", "unread": 2, "photo": "", "group": False, "mine": False, "novas": []},
-        {"name": "Carlos", "last": "ok", "unread": 0, "photo": "", "group": False, "mine": False, "novas": []}]
+        {"name": "Maria Silva", "last": "Chegou bem?", "unread": 2, "waiting": 2, "photo": "https://pps.whatsapp.net/v/foto.jpg", "group": False, "mine": False, "novas": []},
+        {"name": "Grupo da Família", "last": "foto", "unread": 2, "waiting": 2, "photo": "", "group": False, "mine": False, "novas": []},
+        {"name": "Carlos", "last": "ok", "unread": 0, "waiting": 0, "photo": "", "group": False, "mine": False, "novas": []}]
     mine = whatsapp.clean_chats([{"name": "Bia", "last": "Você: chego às 8", "unread": "1", "mine": True}])[0]
     assert mine["mine"] and mine["unread"] == 0, "conversa em que o usuário falou por último nunca é pendente"
 
@@ -601,7 +601,7 @@ def test_chat_list_puts_pending_first_and_tells_the_hud(tmp_path, monkeypatch, e
              {"name": "Maria Silva", "last": "Chegou bem?", "unread": 2, "photo": ""}]
     monkeypatch.setattr(whatsapp, "_chats", lambda ctx=None: [dict(c) for c in chats])
     out = registry.call("whatsapp_conversas", {}, Context({}, people=people))
-    assert out.startswith("- Mãe [contato: Maria Silva]: 2 mensagem(ns) nova(s)") and "- Carlos: nada novo; última: ok" in out
+    assert out.startswith("- Mãe [contato: Maria Silva]: 2 mensagem(ns) NOVA(S)") and "- Carlos: nada novo; última: ok" in out
     assert "uma por uma" in out
     shown = next(extra for channel, text, extra in events if channel == "whatsapp")
     assert shown["mode"] == "lista" and [c["label"] for c in shown["chats"]] == ["Mãe", "Carlos"]
@@ -620,7 +620,7 @@ def test_audio_is_heard_silently_or_played_aloud(tmp_path, monkeypatch, events):
     monkeypatch.setattr(whatsapp, "transcribe", lambda data, cfg: "liga pra mim quando puder")
     ctx = Context({}, people=people)
     assert registry.call("whatsapp_audio", {"contato": "mãe"}, ctx) == "áudio de Mãe, ouvido em silêncio: “liga pra mim quando puder”"
-    assert "tocando o áudio de Mãe" in registry.call("whatsapp_audio", {"contato": "mãe", "modo": "tocar", "qual": 2}, ctx)
+    assert "o áudio de Mãe começa a tocar" in registry.call("whatsapp_audio", {"contato": "mãe", "modo": "tocar", "qual": 2}, ctx)
     assert calls == [("Maria Silva", 1, True), ("Maria Silva", 2, False)]
     assert registry.is_private("whatsapp_audio") and registry.is_private("whatsapp_abrir")
 
@@ -635,9 +635,9 @@ def test_listing_tells_who_sent_each_message(tmp_path):
         {"name": "Família", "group": True, "last": "Tio Zé: foto", "unread": 1, "novas": [{"autor": "Tio Zé", "texto": "📷 Foto"}]},
     ]), people)
     text = whatsapp.listing(chats)
-    assert "- Mãe [contato: Maria Silva]: 2 mensagem(ns) nova(s) que a pessoa mandou para o usuário: “Chegou?”; “Me liga”" in text
+    assert "- Mãe [contato: Maria Silva]: 2 mensagem(ns) NOVA(S), ainda não lida(s), que a pessoa mandou para o usuário: “Chegou?”; “Me liga”" in text
     assert "- Ana Beatriz Lima: a última mensagem é DO USUÁRIO (“chego às 8”); a outra pessoa ainda não respondeu" in text
-    assert "- Família (grupo): 1 mensagem(ns) nova(s) no grupo: Tio Zé: “📷 Foto”" in text
+    assert "- Família (grupo): 1 mensagem(ns) NOVA(S), ainda não lida(s), no grupo: Tio Zé: “📷 Foto”" in text
     assert chats[0]["aliases"] == ["Mãe", "Maria Silva", "Maria"] and chats[2]["aliases"] == ["Família"]
 
 

@@ -20,6 +20,9 @@ from viv.bus import BUS
 
 LONG = 24000          # 1,5 s de fala a 16 kHz: mínimo para decidir quem fala
 FRESH = 90.0          # s em que a última identificação continua valendo
+PRESENT = 180.0       # s em que alguém que falou continua contando como presente na conversa
+SAME = 0.75           # duas falas desconhecidas com esta semelhança são da mesma pessoa
+ENROLL_SAMPLES = 16000 * 12      # fala que o cadastro de outra pessoa junta, pela própria conversa
 TRUST = 300.0         # s em que a voz do dono, reconhecida com segurança, mantém as permissões
 
 
@@ -36,6 +39,10 @@ class Speaker:
         self.current = {"name": "", "owner": False, "known": False, "score": 0.0, "at": float("-inf")}
         self.trusted_at = float("-inf")     # última vez que a voz do dono foi reconhecida com segurança
         self.last_score = 0.0
+        self.heard: dict[str, float] = {}       # quem falou nesta conversa → quando (inclui “voz desconhecida N”)
+        self._unknown: list[np.ndarray] = []    # vozes não cadastradas ouvidas há pouco, para contá-las
+        self.enrolling: dict | None = None      # cadastro de outra pessoa em andamento: nome, falas e amostras
+        self.on_enrolled = None                 # avisa quando um cadastro pela conversa termina (ligado em main.py)
         self._clock = clock
         self._encoder = None
         self._enabled = bool(s.get("enabled", True))
@@ -112,6 +119,9 @@ class Speaker:
         if vec is None:
             return self.who()
         owner_name = self.owner or "dono"
+        if self.enrolling is not None and float(np.dot(vec, self.reference)) < self.threshold:
+            self._collect(audio)                  # fala de quem está sendo cadastrado (a do dono não entra)
+            return self.who()
         scores = {owner_name: float(np.dot(vec, self.reference))}
         scores.update({name: float(np.dot(vec, ref)) for name, ref in self.people.items()})
         name, best = max(scores.items(), key=lambda item: item[1])
@@ -125,7 +135,74 @@ class Speaker:
                         "score": round(best, 3), "at": self._clock()}
         if before != (self.current["name"], known):
             BUS.emit("speaker", self.current["name"], known=known, owner=self.current["owner"])
+        self._mark_present(vec, name if known else "", scores[owner_name])
         return self.who()
+
+    # ---- quem está na conversa -------------------------------------------------
+    def _mark_present(self, vec, name: str, owner_score: float) -> None:
+        """Anota quem falou. Voz não cadastrada só conta como outra pessoa quando claramente não é a do dono
+        (ruído e microfone diferente derrubam a pontuação do próprio dono)."""
+        if not name:
+            if owner_score >= self.short_threshold:
+                return
+            for index, known in enumerate(self._unknown):
+                if float(np.dot(vec, known)) >= SAME:
+                    break
+            else:
+                self._unknown.append(vec)
+                index = len(self._unknown) - 1
+            name = f"voz desconhecida {index + 1}"
+        before = self.present()
+        self.heard[name] = self._clock()
+        if self.present() != before:
+            BUS.emit("presence", "", people=self.present())
+
+    def present(self) -> list[str]:
+        """Quem falou nos últimos minutos, na ordem em que apareceu."""
+        now = self._clock()
+        self.heard = {name: at for name, at in self.heard.items() if now - at <= PRESENT}
+        if not any(name.startswith("voz desconhecida") for name in self.heard):
+            self._unknown = []
+        return list(self.heard)
+
+    # ---- cadastro de outra pessoa pela conversa ----------------------------------------
+    def begin_enrollment(self, name: str) -> None:
+        name = " ".join(str(name).split())[:40]
+        if not name:
+            raise ValueError("diga o nome da pessoa")
+        if name.casefold() == (self.owner or "").casefold():
+            raise ValueError("esse é o nome do dono; o cadastro do dono é feito pelo script de cadastro, com a Viv fechada")
+        if not self.enrolled:
+            raise ValueError("cadastre primeiro a voz do dono (cadastrar_voz.bat), para eu saber separar as vozes")
+        self.enrolling = {"name": name, "clips": [], "samples": 0}
+
+    def cancel_enrollment(self) -> bool:
+        active, self.enrolling = self.enrolling is not None, None
+        return active
+
+    def _collect(self, audio: np.ndarray) -> None:
+        job = self.enrolling
+        job["clips"].append(np.asarray(audio, dtype=np.float32))
+        job["samples"] += len(audio)
+        BUS.emit("progress", f"Ouvindo a voz de {job['name']}", value=min(1.0, job["samples"] / ENROLL_SAMPLES), done=False)
+        if job["samples"] < ENROLL_SAMPLES or len(job["clips"]) < 2:
+            return
+        self.enrolling = None
+        self.enroll_person(job["clips"], job["name"])
+        BUS.emit("progress", "", value=None, done=True)
+        BUS.emit("card", f"Voz de {job['name']} cadastrada", kind="action", ok=True,
+                 body="Ela passa a ser reconhecida. Só a sua voz confirma ações.")
+        if self.on_enrolled is not None:
+            self.on_enrolled(job["name"])
+
+    def forget_person(self, name: str) -> bool:
+        match = next((n for n in self.people if n.casefold() == str(name).casefold().strip()), None)
+        if match is None:
+            return False
+        del self.people[match]
+        with open(self.people_path, "w", encoding="utf-8") as stream:
+            json.dump({n: v.tolist() for n, v in self.people.items()}, stream)
+        return True
 
     def who(self) -> dict:
         """Identidade atual: nome, se é o dono e se alguém foi ouvido há pouco."""

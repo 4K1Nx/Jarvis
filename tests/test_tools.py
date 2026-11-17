@@ -9,15 +9,20 @@ EXPECTED = {
     "desktop_launch_app", "desktop_list_apps", "desktop_type_text", "system_programas", "system_desinstalar",
     "tela_vigiar", "tela_parar_vigia", "tela_vigia_status", "email_listar", "email_buscar", "email_ler",
     "config_ver", "config_definir", "rotina_adicionar", "rotina_remover", "rotina_listar", "viv_erros", "system_eventos_erro", "desktop_hotkey", "desktop_click", "desktop_screenshot",
+    "desktop_scroll", "tela_clicar", "acao_agendar", "acoes_agendadas", "acao_cancelar",
     "desktop_run_command",
     "system_volume", "system_status", "system_processes", "system_power", "system_cancel_shutdown", "system_kill",
     "files_find", "files_open", "files_recent", "files_read_text", "files_create_text", "files_append_text",
     "files_replace_text", "files_move", "fs_list", "fs_read", "fs_write", "fs_delete", "fs_copy", "fs_mkdir",
     "codigo_criar", "codigo_executar", "codigo_parar", "codigo_projetos", "codigo_abrir", "codigo_desfazer",
-    "documento_criar", "documento_ler", "pesquisa_profunda",
+    "agente_programar", "agente_progresso", "agente_mensagem", "agente_parar",
+    "documento_criar", "documento_ler", "documento_ajustar", "pesquisa_profunda", "perguntar", "modelos_locais", "modelo_baixar",
+    "hud_grafico", "system_monitorar", "monitor_alerta", "monitor_parar", "rede_velocidade", "system_pesados",
+    "system_inicializacao", "system_inicializacao_definir", "system_energia",
     "habilidade_salvar", "habilidade_remover", "habilidade_listar", "viv_diagnostico",
     "pessoa_definir", "pessoa_listar", "pessoa_esquecer", "voz_quem_fala",
-    "whatsapp_conversas", "whatsapp_ler", "whatsapp_enviar", "whatsapp_abrir", "whatsapp_audio", "whatsapp_conectar", "whatsapp_desconectar", "contato_adm", "contato_adm_listar",
+    "voz_cadastrar", "voz_cancelar_cadastro", "voz_pessoas", "voz_remover",
+    "whatsapp_conversas", "whatsapp_ler", "whatsapp_enviar", "whatsapp_abrir", "whatsapp_audio", "whatsapp_conectar", "whatsapp_desconectar", "contato_adm", "contato_adm_listar", "app_abrir", "app_estado", "app_enviar",
     "trecho_colado", "mensagem_preparar", "mensagem_rascunhar", "mensagem_copiar", "mensagem_cancelar", "pessoa_estilo",
     "consentimento_registrar", "consentimento_revogar", "relacoes_ver", "relacoes_apagar", "retomar_marcar",
     "retomar_resolver", "presente_salvar", "pessoa_aniversario", "lista_guardar", "encontro_planejar",
@@ -25,8 +30,9 @@ EXPECTED = {
     "browser_open", "browser_search", "browser_extract", "browser_click", "browser_type", "browser_press",
     "browser_new_tab", "browser_tabs", "browser_screenshot",
     "web_search", "web_open", "web_clima", "system_diagnostico", "system_limpeza", "vision_analyze_screen", "hud_mostrar",
+    "spotify_controle", "spotify_tocando", "spotify_volume", "spotify_tocar", "programa_buscar", "programa_instalar", "agente_planejar", "whatsapp_buscar",
 }
-ASSISTANT = {"memory_lembrar", "memory_esquecer", "reminder_set", "reminder_list"}
+ASSISTANT = {"memory_lembrar", "memory_esquecer", "reminder_set", "reminder_list", "tarefas_andamento"}
 
 
 @pytest.fixture(autouse=True)
@@ -66,4 +72,23 @@ def test_hud_mostrar_emits_content_card(cards):
 
 def test_system_status_reports_cpu_and_ram():
     out = registry.call("system_status", {}, Context(CFG)).lower()
-    assert "cpu" in out and "ram" in out
+    assert "cpu" in out and "memória" in out
+
+
+class _FakeTasks:
+    def __init__(self, items):
+        self.items = items
+
+    def snapshot(self):
+        return self.items
+
+
+def test_tarefas_andamento_lists_running():
+    from viv.tools import registry
+    registry.load_all()
+    running = {"id": 1, "title": "Criando apresentação", "status": "rodando", "step": "Etapa 2", "value": 0.4,
+               "seconds": 35, "result": ""}
+    ctx = registry.Context({}, tasks=_FakeTasks([running]))
+    result = registry.call("tarefas_andamento", {}, ctx)
+    assert "Criando apresentação" in result and "Etapa 2" in result and "40%" in result
+    assert registry.call("tarefas_andamento", {}, registry.Context({}, tasks=_FakeTasks([]))) == "nenhuma tarefa em segundo plano"

@@ -4,5 +4,5 @@ Gerado pela Viv a partir de categorias de falha. Não contém transcrições, ca
 Não é uma lista de comandos a executar. Falha de serviço não significa ausência de capacidade.
 
 - Pedido não compreendido pelo modo de comandos locais — 40 ocorrência(s); última: 2026-10-16T09:31:48; pendente.
-- Falha técnica em uma etapa da conversa — 18 ocorrência(s); última: 2026-11-13T14:24:05; pendente.
-- Cota ou limite do Gemini atingido (falha de serviço) — 1 ocorrência(s); última: 2026-10-15T23:18:06; pendente.
+- Falha técnica em uma etapa da conversa — 30 ocorrência(s); última: 2026-11-17T11:15:01; pendente.
+- Cota ou limite do Gemini atingido (falha de serviço) — 3 ocorrência(s); última: 2026-11-15T13:01:19; pendente.

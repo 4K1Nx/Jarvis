@@ -132,7 +132,7 @@ def test_chat_list_shows_pending_replies_previews_and_photos(server):
     assert all(device == "viv" for _, path, _, device in fake.calls if path != "/devices")
     clean = whatsapp.clean_chats(chats)[0]
     assert clean["name"] == "Ana Beatriz Lima" and clean["unread"] == 3 and len(clean["novas"]) == 3
-    assert set(clean) == {"name", "last", "unread", "photo", "group", "mine", "novas"}, "o jid não vai para a tela"
+    assert set(clean) == {"name", "last", "unread", "waiting", "photo", "group", "mine", "novas"}, "o jid não vai para a tela"
 
 
 def test_old_unanswered_message_is_not_pending(server):
@@ -255,10 +255,10 @@ def events(monkeypatch):
 def test_tools_use_the_direct_service_without_a_browser(tools, events):
     fake, service, ctx, _ = tools
     out = registry.call("whatsapp_conversas", {}, ctx)
-    assert out.startswith("- Bia [contato: Ana Beatriz Lima]: 3 mensagem(ns) nova(s) que a pessoa mandou para o usuário: "
-                          "“oi amor, vem hoje?”")
+    assert out.startswith("- Bia [contato: Ana Beatriz Lima]: 3 mensagem(ns) NOVA(S), ainda não lida(s), que a pessoa "
+                          "mandou para o usuário: “oi amor, vem hoje?”")
     assert "- Carlos Souza: a última mensagem é DO USUÁRIO (“ok, estarei lá”)" in out
-    assert "- Família (grupo): 1 mensagem(ns) nova(s) no grupo: Tio Zé: “foto da festa”" in out
+    assert "- Família (grupo): 1 mensagem(ns) NOVA(S), ainda não lida(s), no grupo: Tio Zé: “foto da festa”" in out
     assert "nunca diga que ele a recebeu" in out
     chats = [extra for channel, _, extra in events if channel == "whatsapp" and extra.get("mode") == "lista"][0]["chats"]
     assert "Bia" in chats[0]["aliases"] and "Ana" in chats[0]["aliases"]
@@ -276,7 +276,7 @@ def test_audio_in_silence_is_transcribed_and_aloud_goes_to_vivs_speakers(tools, 
     monkeypatch.setattr(direct, "decode_pcm", lambda raw: b"PCM:" + raw)
     assert registry.call("whatsapp_audio", {"contato": "Bia"}, ctx) == "áudio de Bia, ouvido em silêncio: “liga pra mim”"
     assert heard == [b"OggS-fake"] and played == []
-    assert "tocando o áudio de Bia" in registry.call("whatsapp_audio", {"contato": "Bia", "modo": "tocar"}, ctx)
+    assert "o áudio de Bia começa a tocar" in registry.call("whatsapp_audio", {"contato": "Bia", "modo": "tocar"}, ctx)
     assert played == [b"PCM:OggS-fake"]
 
 
@@ -433,3 +433,105 @@ def test_transcription_decodes_the_audio_itself(monkeypatch):
     monkeypatch.setattr(direct, "decode_pcm", lambda raw, rate=24000: (_ for _ in ()).throw(ValueError("ruim")))
     with pytest.raises(RuntimeError, match="decodificar"):
         whatsapp.transcribe(b"lixo", {})
+
+
+class SpeakingPlayer:
+    """Caixa de som em que a Viv começa a falar logo depois de a ferramenta rodar."""
+
+    def __init__(self, clock, starts=0.5, lasts=2.0):
+        self.clock, self.starts, self.lasts, self.played = clock, starts, lasts, []
+
+    def is_playing(self):
+        return self.starts <= self.clock.now < self.starts + self.lasts
+
+    def play(self, pcm):
+        self.played.append((self.clock.now, pcm))
+
+
+class StepClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def nap(self, seconds):
+        self.now += seconds
+
+
+def test_whatsapp_audio_waits_for_viv_to_finish_announcing():
+    from viv.tools.whatsapp import SPEECH_GAP, after_speech
+    clock = StepClock()
+    player = SpeakingPlayer(clock)
+    after_speech(player, b"PCM", clock=clock, nap=clock.nap, background=False)
+    (at, pcm), = player.played
+    assert pcm == b"PCM" and at >= 0.5 + 2.0 + SPEECH_GAP - 0.1, "o áudio só toca depois do anúncio dela"
+
+
+def test_whatsapp_audio_plays_after_short_wait_when_viv_stays_quiet():
+    from viv.tools.whatsapp import SPEECH_GAP, SPEECH_START, after_speech
+    clock = StepClock()
+    player = SpeakingPlayer(clock, starts=999)
+    after_speech(player, b"PCM", clock=clock, nap=clock.nap, background=False)
+    assert player.played and player.played[0][0] <= SPEECH_START + SPEECH_GAP + 0.2
+
+
+# ---- o que o usuário já leu, nome de perfil e busca por período ------------------------------------------
+def test_messages_read_on_the_phone_stop_being_new_but_stay_pending(server):
+    _, service, _ = server
+    seen = []
+    service.on_message = lambda *a: seen.append(a)
+
+    def post(event, payload):
+        body = json.dumps({"event": event, "payload": payload}).encode()
+        return service.webhook(body, "sha256=" + hmac.new(service.secret.encode(), body, hashlib.sha256).hexdigest(), "127.0.0.1")
+
+    assert service.chat_list()[0]["unread"] == 3
+    assert post("message.ack", {"chat_id": BIA, "receipt_type": "read", "ids": ["X"]})      # ela leu a minha: não conta
+    assert service.chat_list()[0]["unread"] == 3
+    assert post("message.ack", {"chat_id": BIA, "receipt_type": "read-self", "ids": ["B3"]})  # eu li no celular
+    bia = service.chat_list()[0]
+    assert bia["unread"] == 0 and bia["waiting"] == 3 and seen == [], "vista, mas ainda sem resposta"
+    assert service.seen_at(BIA) > 0 and Gowa({"whatsapp": {"data_dir": str(service.folder)}}, 8765).seen_at(BIA) > 0, "fica salvo"
+    listed = whatsapp.listing(whatsapp.prepare(whatsapp.clean_chats(service.chat_list()), whatsapp.People(str(service.folder / "p.json"))))
+    assert "JÁ VIU" in listed and "NOVA" not in listed.split("Ana Beatriz Lima")[1].split("\n")[0]
+
+
+def test_profile_name_and_lid_resolve_to_the_phone_conversation(server):
+    fake, service, tmp_path = server
+    lid = "999888777666@lid"
+    local_db(tmp_path, contacts=[(BIA, "Ma Belle", "Chris"), (lid, "", "Chris")], lids=[("999888777666", BIA.split("@")[0])])
+    fake.chats = [c for c in fake.chats if c["jid"] != BIA]          # a busca de conversas não acha “Chris”
+    assert service.resolve("Chris") == ("Ma Belle", BIA)
+    assert service.resolve(lid)[1] == BIA, "LID vira o telefone, onde as mensagens estão"
+
+
+def test_history_filters_by_chat_period_and_text(server):
+    import sqlite3
+    _, service, tmp_path = server
+    path = tmp_path / "gowa" / "storages" / "chatstorage.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
+    con.execute("create table messages (id text, chat_jid text, device_id text, sender text, content text, timestamp text, "
+                "is_from_me bool, media_type text)")
+    rows = [("M1", BIA, "eu", BIA, "bom dia", "2026-11-17 10:00:00+00:00", 0, ""),
+            ("M2", BIA, "eu", "", "vamos no churrasco?", "2026-11-17 14:05:00+00:00", 1, ""),
+            ("M3", BIA, "eu", BIA, "", "2026-11-17 14:10:00+00:00", 0, "audio"),
+            ("M4", CHEFE, "eu", CHEFE, "churrasco sábado", "2026-11-17 15:00:00+00:00", 0, "")]
+    con.executemany("insert into messages values (?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    con.commit(); con.close()
+    since = datetime(2026, 11, 17, 14, 0, tzinfo=timezone.utc).timestamp()
+    assert [m["id"] for m in service.history(BIA, since)] == ["M2", "M3"], "período, em ordem de tempo"
+    assert [m["id"] for m in service.history("", None, None, "churrasco")] == ["M2", "M4"], "conteúdo, em todas"
+    assert [m["id"] for m in service.history("", None, None, "100%_x")] == [], "curinga do LIKE não vaza"
+
+
+def test_parse_when_understands_spoken_times():
+    from viv.tools.whatsapp import parse_when
+    noon = datetime(2026, 11, 17, 12, 0).timestamp()
+    at = lambda text: datetime.fromtimestamp(parse_when(text, noon)).strftime("%d %H:%M")
+    assert at("11h") == "17 11:00" and at("11:30") == "17 11:30" and at("13h") == "16 13:00", "hora futura é de ontem"
+    assert at("2h atrás") == "17 10:00" and at("30min") == "17 11:30" and at("ontem") == "16 00:00"
+    assert at("15/11 9h") == "15 09:00" and parse_when("") is None
+    with pytest.raises(ValueError):
+        parse_when("quando der", noon)

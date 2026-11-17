@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime
 from email.message import EmailMessage
 
@@ -11,7 +12,7 @@ from viv.errors import ERRORS, ErrorLog
 from viv.routine import RoutineClock
 from viv.safety import Gate
 from viv.settings import Settings, parse_days, parse_time
-from viv.tools import mail, registry, uninstall, vision
+from viv.tools import _llm, mail, registry, uninstall, vision
 from viv.tools.registry import Context
 from viv.watch import ScreenWatch
 
@@ -203,27 +204,79 @@ def test_briefing_survives_every_source_failing(settings, tmp_path):
 
 
 # ---- iniciar com o Windows ----------------------------------------------------
-def test_autostart_creates_and_removes_shortcut(tmp_path, monkeypatch):
+class FakeWinreg:
+    HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_QUERY_VALUE, REG_SZ = 1, 2, 4, 1
+
+    def __init__(self):
+        self.values = {}
+
+    def CreateKeyEx(self, root, path, reserved, access):
+        import contextlib
+        assert path == autostart.RUN_KEY
+        return contextlib.nullcontext(self)
+
+    def QueryValueEx(self, key, name):
+        if name not in self.values:
+            raise FileNotFoundError(name)
+        return self.values[name], self.REG_SZ
+
+    def SetValueEx(self, key, name, reserved, kind, value):
+        self.values[name] = value
+
+    def DeleteValue(self, key, name):
+        if name not in self.values:
+            raise FileNotFoundError(name)
+        del self.values[name]
+
+
+@pytest.fixture
+def registry_env(tmp_path, monkeypatch):
+    fake = FakeWinreg()
+    monkeypatch.setitem(sys.modules, "winreg", fake)
+    monkeypatch.setattr(autostart, "ROOT", tmp_path)
+    (tmp_path / ".venv" / "Scripts").mkdir(parents=True)
+    (tmp_path / ".venv" / "Scripts" / "pythonw.exe").write_bytes(b"")
     link = tmp_path / "Startup" / "Viv.lnk"
     monkeypatch.setattr(autostart, "shortcut_path", lambda: link)
-    calls = []
+    return fake, link
 
-    def fake_run(cmd, env=None, **kw):
-        calls.append(env)
-        link.write_bytes(b"lnk")
-        return type("R", (), {"returncode": 0})()
-    monkeypatch.setattr(autostart.subprocess, "run", fake_run)
+
+def test_autostart_uses_run_key_without_console_and_removes_old_shortcut(registry_env, tmp_path):
+    fake, link = registry_env
+    link.parent.mkdir()
+    link.write_bytes(b"lnk")
     autostart.apply(True)
-    assert autostart.is_enabled() and calls[0]["VIV_TARGET"].endswith("run.bat") and calls[0]["VIV_LNK"] == str(link)
+    command = fake.values["Viv"]
+    assert autostart.is_enabled() and not link.exists()
+    assert "pythonw.exe" in command and command.endswith("--briefing") and str(tmp_path / "main.py") in command
     autostart.apply(False)
     assert not autostart.is_enabled()
 
 
-def test_autostart_reports_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(autostart, "shortcut_path", lambda: tmp_path / "Viv.lnk")
-    monkeypatch.setattr(autostart.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 1})())
+def test_autostart_sync_migrates_old_shortcut_and_fixes_moved_folder(registry_env):
+    fake, link = registry_env
+    link.parent.mkdir()
+    link.write_bytes(b"lnk")
+    autostart.sync(True)
+    assert fake.values["Viv"] == autostart.command() and not link.exists()
+    fake.values["Viv"] = r'"C:\pasta antiga\pythonw.exe" main.py --briefing'
+    autostart.sync(True)
+    assert fake.values["Viv"] == autostart.command()
+    autostart.sync(False)
+    assert "Viv" not in fake.values
+
+
+def test_autostart_reports_missing_environment(registry_env, tmp_path):
+    (tmp_path / ".venv" / "Scripts" / "pythonw.exe").unlink()
     with pytest.raises(RuntimeError):
         autostart.enable()
+
+
+def test_briefing_prompt_after_sleeping_start(settings, tmp_path):
+    data = briefing.collect(settings, object(), ErrorLog(str(tmp_path / "e.jsonl")), now=datetime(2026, 11, 14, 9, 0))
+    data["ligado_em"] = "08:12"
+    text = briefing.prompt(data)
+    assert "ligado às 08:12" in text and "dormindo" in text and "resumo de tudo" in text
 
 
 # ---- e-mail -----------------------------------------------------------------
@@ -306,7 +359,7 @@ def test_uninstall_confirmation_shows_exact_program_and_runs_winget_only_after_c
     ran, told = [], []
     monkeypatch.setattr(uninstall, "installed_programs", lambda: PROGRAMS)
     monkeypatch.setattr(uninstall.subprocess, "run", lambda cmd, **kw: (ran.append(cmd), type("R", (), {"returncode": 0, "stdout": b"ok"})())[1])
-    gate = Gate(CFG, Context(CFG), NoVoice(), Audit(), told.append)
+    gate = Gate(CFG, Context(CFG), NoVoice(), Audit(), told.append, spawn=lambda job: job())
     out = gate.submit("system_desinstalar", {"nome": "7zip"})
     assert out.startswith("pendente") and "clicando" in out and ran == []
     confirm = next(extra for ch, _, extra in cards if ch == "confirm")
@@ -314,13 +367,13 @@ def test_uninstall_confirmation_shows_exact_program_and_runs_winget_only_after_c
     gate.on_user_utterance("sim", np.zeros(16000, dtype=np.float32))
     assert ran == [] and any("Sem cadastro de voz" in text for ch, text, _ in cards if ch == "confirm_hint")
     gate.on_click(True)
-    assert ran and ran[0][:4] == ["winget", "uninstall", "--name", "7-Zip 24.08 (x64)"] and "desinstalado" in told[0]
+    assert ran and ran[0][:4] == ["winget", "uninstall", "--name", "7-Zip 24.08 (x64)"] and "desinstalado" in told[-1]
 
 
 def test_uninstall_unknown_program_is_refused_before_asking(monkeypatch, cards):
     registry.load_all()
     monkeypatch.setattr(uninstall, "installed_programs", lambda: PROGRAMS)
-    gate = Gate(CFG, Context(CFG), NoVoice(), Audit(), lambda t: None)
+    gate = Gate(CFG, Context(CFG), NoVoice(), Audit(), lambda t: None, spawn=lambda job: job())
     assert gate.submit("system_desinstalar", {"nome": "photoshop"}).startswith("erro:") and gate.pending is None
     assert not [c for c in cards if c[0] == "confirm"]
 
@@ -331,7 +384,8 @@ class FlakyClient:
         self.failures, self.used = list(failures), []
         self.models = self
 
-    def generate_content(self, model, contents):
+    def generate_content(self, model, contents, config=None):
+        self.config = config
         self.used.append(model)
         if self.failures:
             raise RuntimeError(self.failures.pop(0))
@@ -410,3 +464,10 @@ def test_uninstall_does_not_accept_a_merely_similar_name(monkeypatch):
     with pytest.raises(LookupError) as error:
         uninstall.resolve("steem")
     assert "Steam" in str(error.value)
+
+
+def test_every_text_call_has_a_deadline_and_a_timeout_falls_back():
+    client = FlakyClient(["Read timed out"] * 2)
+    client.models = client
+    assert _llm.generate(client, "modelo", "pergunta", sleep=lambda s: None)
+    assert client.config["http_options"]["timeout"] == _llm.TIMEOUT_MS

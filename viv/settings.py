@@ -31,13 +31,22 @@ SCHEMA: dict[str, tuple] = {
     "whatsapp.direto": (bool, True, "WhatsApp direto, sem navegador", "Usa o serviço local do WhatsApp (instale com scripts/instalar_whatsapp.py). Desligado, a Viv usa o WhatsApp Web no navegador.", None),
     "whatsapp.avisar_novas": (bool, True, "Avisar mensagens novas do WhatsApp", "Mostra na tela quem mandou mensagem, sem o conteúdo. Só com o WhatsApp direto.", None),
     "hud.avatar": (bool, True, "Avatar no canto da tela", "Uma Viv pequenininha em pixel art que mostra se ela está ouvindo, pensando, falando ou lendo, e o humor dela.", None),
+    "hud.animacoes": (bool, True, "Animações completas", "Anima a tela e o avatar mesmo com os efeitos de animação do Windows desligados. Desligado, segue o Windows.", None),
+    "avatar.tamanho": (int, 100, "Tamanho do avatar", "Em %, de 50 a 300. Vale para o avatar da janela e para a miniatura.", None),
+    "avatar.opacidade": (int, 100, "Opacidade do avatar", "Em %, de 20 (quase transparente) a 100 (sólido). Vale para o avatar da janela e para a miniatura.", None),
+    "musica.visualizar": (bool, True, "Avatar dança com a música", "Com o Spotify tocando, o avatar mostra o volume, o grave e o agudo da música em barras de LED.", None),
+    "musica.avisar": (bool, True, "Avisar a música que começou", "Mostra um aviso com a capa do álbum quando uma faixa nova começa no Spotify.", None),
+    "miniatura.ativa": (bool, True, "Miniatura ao minimizar", "Com a janela minimizada, só o avatar fica num canto da tela, reagindo e conversando. Clicar nele abre a janela de volta.", None),
+    "miniatura.canto": (str, "inferior direito", "Canto da miniatura", "inferior direito, inferior esquerdo, superior direito ou superior esquerdo.", None),
     "voz.nome": (str, "Achernar", "Voz", "Voz do Gemini. Suaves: Achernar, Vindemiatrix, Sulafat. Vale na próxima vez que ela acordar.", ("live", "voice")),
+    "ia.local": (str, "reserva", "Modelos locais (Ollama)", "reserva: o computador assume quando a cota do Gemini acaba. economia: o computador responde primeiro nas tarefas de texto, poupando a cota (mais lento e menos caprichado). desligado: nunca usa.", None),
     "inicio.com_windows": (bool, False, "Abrir junto com o Windows", "A Viv inicia quando o computador liga.", None),
     "inicio.boas_vindas": (bool, True, "Boas-vindas ao ligar", "Ao iniciar com o Windows, ela faz um resumo do dia.", None),
     "email.usuario": (str, "", "E-mail", "Endereço da conta. A senha de app fica no arquivo .env (VIV_EMAIL_SENHA).", None),
     "email.servidor": (str, "imap.gmail.com", "Servidor IMAP", "Gmail: imap.gmail.com. Outlook: outlook.office365.com.", None),
 }
-RANGES = {"audio.sensibilidade_interrupcao": (0.03, 0.3), "conversa.segundos_ate_dormir": (15, 600)}
+RANGES = {"audio.sensibilidade_interrupcao": (0.03, 0.3), "conversa.segundos_ate_dormir": (15, 600),
+          "avatar.tamanho": (50, 300), "avatar.opacidade": (20, 100)}
 TRUE = {"sim", "true", "1", "ligado", "ligar", "ativo", "ativar", "on", "verdadeiro", "s"}
 FALSE = {"nao", "não", "false", "0", "desligado", "desligar", "inativo", "desativar", "off", "falso", "n"}
 DAY_NAMES = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"]

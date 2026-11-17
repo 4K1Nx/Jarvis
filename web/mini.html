@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Viv mini</title>
+<style>
+  /* o painel ocupa a janela inteira, do tamanho que ela tiver: sem transparência não sobra canto claro */
+  html, body { margin: 0; height: 100%; background: #0c0916; overflow: hidden; user-select: none; }
+  body { font: 11px/1.2 "Segoe UI", system-ui, sans-serif; }
+  #avatar { --glow: #4fb8ff; position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer; box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, var(--glow) 55%, transparent); box-shadow: inset 0 0 18px -6px var(--glow); transition: border-color .4s, box-shadow .4s; }
+  #avatar canvas { display: block; width: min(calc(100vw - 24px), calc((100vh - 18px) * 20 / 14)); aspect-ratio: 20 / 14; }
+  #avatar[data-state="sleeping"] { opacity: .8; }
+  #avatar[data-hibernating="true"] { opacity: .55; box-shadow: none; }
+  #alert { position: absolute; top: 6px; right: 6px; min-width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center;
+    background: #ffb86b; color: #1a1420; font-weight: 700; }
+  #alert[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="avatar" role="img" aria-label="Viv" data-cell="7" title="Clique para abrir a Viv">
+  <canvas id="avatar-canvas" width="140" height="98"></canvas>
+  <span id="alert" hidden>!</span>
+</div>
+<script src="/static/avatar.js"></script>
+<script src="/static/mini.js"></script>
+</body>
+</html>

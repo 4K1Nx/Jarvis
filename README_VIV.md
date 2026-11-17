@@ -144,6 +144,18 @@ Os lembretes pessoais aparecem só na tela, sem conteúdo de conversa; “Lembre
 
 **Ainda depende de configuração:** não há agenda conectada (os encontros usam a sua rotina e o que a pessoa compartilhou, e você confirma os horários), não há Notion (as listas são locais) e a Viv não faz compras, reservas nem pedidos de entrega.
 
+### Apps ao vivo: projetos que a Viv controla
+
+“Viv, cria um xadrez pra gente jogar.” Os projetos web que ela programa (um `index.html`) são servidos por ela em `http://127.0.0.1:8766/apps/<projeto>/` e se ligam a ela por `viv-app.js`:
+
+- o app conta à Viv o que acontece (a sua jogada, o placar, de quem é a vez) e ela é avisada na hora, sem precisar ver a tela;
+- ela age no app com comandos (a jogada dela) e recebe a resposta: feito, ou o motivo de não ter feito (jogada ilegal);
+- “abre o xadrez” usa `app_abrir`, que não pede confirmação.
+
+Um projeto antigo sem a ligação, como o primeiro xadrez, fica ligado com um pedido: “Viv, adapta o xadrez para você jogar comigo de verdade”.
+
+Os apps rodam numa porta separada da tela da Viv (a porta dela + 1): o código gerado não alcança as rotas da tela, como acordar a Viv ou confirmar ações perigosas. A ligação só aceita a própria página do app, só serve arquivos de dentro da pasta do projeto e limita o tamanho das mensagens. O que o app conta é tratado como dado, não como instrução.
+
 ### Desinstalar programas
 
 "Desinstala o 7-Zip" usa o winget e sempre pede confirmação, mostrando o nome exato do programa. Se o nome falado serve para mais de um programa, ela pergunta qual em vez de escolher.

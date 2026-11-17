@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Viv avisos</title>
+<link rel="stylesheet" href="/static/viv.css">
+<style>
+  /* janelinha sem moldura no canto superior direito, só com os avisos, enquanto a Viv está minimizada */
+  html, body { margin: 0; padding: 0; background: #0c0916 !important; overflow: hidden; }
+  body::before, body::after { display: none !important; }
+  #stack { display: flex; flex-direction: column; gap: 8px; padding: 0; }
+  #stack .card.toast { position: relative; right: auto; top: auto !important; width: auto; max-height: none !important; box-shadow: none; }
+  #stack .card.toast { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="stack" aria-live="polite"></div>
+<script src="/static/toast.js"></script>
+<script src="/static/avisos.js"></script>
+</body>
+</html>

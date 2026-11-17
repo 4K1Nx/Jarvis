@@ -5,12 +5,13 @@ import importlib
 from dataclasses import dataclass
 from typing import Any
 
+from viv import tasks
 from viv.bus import BUS
 from viv.errors import ERRORS
 
 _REG: dict[str, dict] = {}
 _MODULES = ("desktop", "apps", "system", "optimize", "uninstall", "files", "browser", "web", "weather", "vision", "mail",
-            "hud", "assistant", "settings_tools", "code", "docs", "research", "extras", "social", "whatsapp", "relacoes")
+            "hud", "assistant", "settings_tools", "code", "agente", "docs", "research", "extras", "social", "whatsapp", "relacoes", "modelos", "charts", "monitor", "agenda", "musica", "instalar", "planejar")
 
 
 @dataclass
@@ -29,6 +30,10 @@ class Context:
     gowa: Any = None
     audio: Any = None
     remote: Any = None
+    apps: Any = None          # viv.apps.AppHub: projetos web ligados à Viv ao vivo
+    schedule: Any = None      # viv.schedule.Schedule: ações com hora marcada
+    tasks: Any = None         # viv.tasks.Tasks: o que demora segue em segundo plano
+    notify: Any = None        # novidade para o usuário: ela fala se acordada, senão conta ao acordar
     origin: str = ""          # JID do contato administrador que pediu pelo WhatsApp; vazio = o dono, no PC
 
 
@@ -83,8 +88,9 @@ def voice_approvable(name: str):
 def progress(label: str, value: float | None = None) -> None:
     """Etapa atual de uma tarefa demorada, para a barra de progresso da HUD. `value` de 0 a 1;
     sem valor, a barra só indica atividade."""
-    BUS.emit("progress", str(label)[:120], value=None if value is None else max(0.0, min(1.0, float(value))),
-             done=False)
+    value = None if value is None else max(0.0, min(1.0, float(value)))
+    if not tasks.note(label, value):          # tarefa em segundo plano tem a própria linha na HUD
+        BUS.emit("progress", str(label)[:120], value=value, done=False)
 
 
 def describe(name: str, args: dict | None) -> str:
@@ -116,7 +122,8 @@ def call(name: str, args: dict | None, ctx: Context) -> str:
         ERRORS.record(name, f"{type(exc).__name__}: {exc}")
         return f"erro: {exc}"
     finally:
-        BUS.emit("progress", "", value=None, done=True)
+        if not tasks.backgrounded():
+            BUS.emit("progress", "", value=None, done=True)
     if entry["card"]:
         BUS.emit("card", describe(name, args), kind="action", body=result[:300], ok=True)
     return result

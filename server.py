@@ -27,7 +27,39 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
 
     @app.get("/")
     def index():
-        return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-store"})
+        return page("index.html")
+
+    def page(name: str):
+        # Cada arquivo da tela vai com a data de modificação no endereço: sem isso o navegador seguia usando o
+        # estilo e os scripts antigos depois de uma atualização (botão sem estilo, gráfico que não aparecia).
+        import re
+        from fastapi.responses import HTMLResponse
+
+        def stamp(match):
+            try:
+                return f'{match.group(0)}?v={int((WEB / match.group(1)).stat().st_mtime)}'
+            except OSError:
+                return match.group(0)
+        html = re.sub(r'/static/([\w.-]+\.(?:js|css))', stamp, (WEB / name).read_text(encoding="utf-8"))
+        if settings is not None and settings.get("hud.animacoes"):      # anima mesmo com o Windows em modo reduzido
+            html = html.replace('<html lang="pt-BR">', '<html lang="pt-BR" data-motion="full">', 1)
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    @app.get("/mini")
+    def mini_page():
+        """Só o avatar: a janelinha que fica no canto da tela enquanto a Viv está minimizada (viv/mini.py)."""
+        return page("mini.html")
+
+    @app.get("/avisos")
+    def notices_page():
+        """Os avisos do canto superior direito, numa janelinha própria enquanto a Viv está minimizada."""
+        return page("avisos.html")
+
+    @app.post("/api/mini/abrir")
+    def mini_open(request: Request):
+        same_origin(request)
+        mini = getattr(app.state, "mini", None)
+        return {"ok": bool(mini is not None and mini.restore())}
 
     @app.get("/favicon.ico")
     def favicon():
@@ -44,10 +76,14 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
             "mood": mood.state() if mood is not None else None,
             "speaker": {"name": who["name"], "known": who["known"], "owner": who["owner"]} if who and who["heard"] else None,
             "state": viv.state.value,
+            "hibernating": bool(getattr(viv, "hibernating", False)),
+            "text_only": bool(getattr(viv, "text_only", False)),
+            "present": speaker.present() if speaker is not None and speaker.enrolled and hasattr(speaker, "present") else [],
             "mic": audio.input_name,
             "model": cfg.get("live", {}).get("model", ""),
             "enrolled": bool(speaker is not None and speaker.enrolled),
             "avatar": bool(settings.get("hud.avatar")) if settings is not None else True,
+            "avatar_look": {"size": settings.get("avatar.tamanho"), "opacity": settings.get("avatar.opacidade")} if settings is not None else None,
             "pending": {"name": pending["name"], "text": pending.get("text") or pending["name"],
                         "voice": bool(pending.get("voice")),
                         "seconds": gate.remaining() if hasattr(gate, "remaining") else 30} if pending else None,
@@ -57,6 +93,84 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
     def wake(request: Request):
         same_origin(request)
         viv.wake("button")
+        return {"ok": True}
+
+    local_chats: dict[str, list[dict]] = {}       # conversa com cada modelo local, enquanto a Viv estiver aberta
+    local_busy: set[str] = set()
+
+    def local_reply(model: str, text: str) -> None:
+        """Responde no chat com um modelo do Ollama, mostrando o texto conforme ele chega. A Viv não participa."""
+        import time
+        from viv.tools import local
+        history = local_chats.setdefault(model, [])
+        history.append({"role": "user", "content": text})
+        shown = [0.0]
+
+        def partial(so_far):
+            if time.monotonic() - shown[0] >= 0.15:
+                shown[0] = time.monotonic()
+                BUS.emit("chat", so_far, reply=True, model=model, final=False)
+        try:
+            answer = local.chat(getattr(gate, "ctx", None), model, history, partial)
+            history.append({"role": "assistant", "content": answer})
+            del history[:-local.CHAT_TURNS]
+            BUS.emit("chat", answer, reply=True, model=model, final=True)
+        except Exception as exc:
+            history.pop()
+            BUS.emit("chat", f"Não consegui falar com {model}: {str(exc)[:200]}", reply=True, model=model, final=True, failed=True)
+        finally:
+            local_busy.discard(model)
+
+    @app.get("/api/chat/modelos")
+    def chat_models():
+        from viv.tools import local
+        return {"modelos": [{"id": "viv", "nome": "Viv"}] +
+                [{"id": m["nome"], "nome": f"{m['nome']} ({m['gb']} GB)"} for m in local.chat_models(getattr(gate, "ctx", None))]}
+
+    @app.post("/api/chat/nova")
+    async def chat_new(request: Request):
+        """Recomeça do zero a conversa com um modelo local."""
+        same_origin(request)
+        local_chats.pop(str((await request.json()).get("modelo", "")), None)
+        return {"ok": True}
+
+    @app.post("/api/chat")
+    async def chat(request: Request):
+        """Mensagem digitada no chat da HUD. Para a Viv, chega como se o usuário tivesse falado; para um modelo
+        local escolhido no chat, vai direto ao Ollama e a resposta volta por escrito."""
+        same_origin(request)
+        data = await request.json()
+        raw, model = str(data.get("texto", "")), str(data.get("modelo") or "viv").strip()
+        if model == "viv":
+            text = " ".join(raw.split())[:2000]
+            if not text:
+                raise HTTPException(400, "mensagem vazia")
+            viv.type(text)
+            return {"ok": True}
+        text = raw.strip()[:8000]
+        if not text:
+            raise HTTPException(400, "mensagem vazia")
+        from viv.tools import local
+        if model not in {m["nome"] for m in local.chat_models(getattr(gate, "ctx", None))}:
+            raise HTTPException(400, "modelo não instalado")
+        if model in local_busy:
+            raise HTTPException(409, "esse modelo ainda está respondendo")
+        local_busy.add(model)
+        import threading
+        threading.Thread(target=local_reply, args=(model, text), daemon=True, name="viv-chat-local").start()
+        return {"ok": True}
+
+    @app.post("/api/chat/modo")
+    async def chat_mode(request: Request):
+        """Só texto (ela não fala e o microfone fica fechado) ou texto e voz."""
+        same_origin(request)
+        viv.set_text_only(bool((await request.json()).get("so_texto")))
+        return {"ok": True, "so_texto": bool(viv.text_only)}
+
+    @app.post("/api/hibernate")
+    def hibernate(request: Request):
+        same_origin(request)
+        viv.hibernate()
         return {"ok": True}
 
     @app.post("/api/sleep")
@@ -71,6 +185,18 @@ def create_app(viv, gate, audio, cfg: dict, speaker=None, settings=None, mood=No
         if decision not in ("sim", "nao"):
             raise HTTPException(400, "use sim ou nao")
         await asyncio.to_thread(gate.on_click, decision == "sim")   # a ferramenta pode demorar
+        return {"ok": True}
+
+    @app.post("/api/answer")
+    async def answer(request: Request):
+        """Clique numa opção de uma pergunta da Viv (viv/tools/hud.py): ela fica sabendo da escolha."""
+        same_origin(request)
+        from viv.tools import hud
+        data = await request.json()
+        question, option = str(data.get("pergunta", "")), str(data.get("opcao", ""))
+        if not hud.answer(question, option):
+            raise HTTPException(400, "essa pergunta não está mais aberta")
+        viv.notify(f"O usuário escolheu na tela: “{option}” para “{question}”.")
         return {"ok": True}
 
     def routine_rows():

@@ -6,8 +6,9 @@ import time
 # Reservas para quando o modelo principal está sobrecarregado. O gemini-2.5-flash saiu da lista: foi
 # desligado para contas novas e, sendo o último reserva, o erro dele (404) escondia a sobrecarga real.
 FALLBACK_MODELS = ("gemini-3.7-flash", "gemini-3-flash-preview")
+TIMEOUT_MS = 90_000        # prazo de cada chamada; vencido, conta como falha passageira e tenta o modelo reserva
 GONE = ("404", "not_found", "not found", "no longer available", "is not supported")
-TRANSIENT = ("503", "unavailable", "429", "resource_exhausted", "overloaded", "high demand", "deadline", "timeout", "500")
+TRANSIENT = ("503", "unavailable", "429", "resource_exhausted", "overloaded", "high demand", "deadline", "timeout", "timed out", "500")
 
 
 def generate(client, model: str, contents, sleep=time.sleep, label: str = "de texto", config: dict | None = None,
@@ -15,7 +16,8 @@ def generate(client, model: str, contents, sleep=time.sleep, label: str = "de te
     """Pergunta ao modelo. Em falha passageira (503, cota), tenta de novo e cai para modelos reserva.
     Devolve o texto, ou a resposta inteira com `raw` (para ler chamadas de ferramenta)."""
     first, busy = None, False
-    extra = {"config": config} if config else {}
+    # sem prazo, uma chamada presa segurava a tarefa indefinidamente (uma análise de tela já levou 20 minutos)
+    extra = {"config": {"http_options": {"timeout": TIMEOUT_MS}, **(config or {})}}
     for name in dict.fromkeys((model,) + FALLBACK_MODELS):
         for attempt in range(2):
             try:
@@ -46,8 +48,39 @@ def parse_json(text: str):
         raise RuntimeError("o modelo devolveu uma resposta que não consegui ler; tente de novo") from None
 
 
+def _local(ctx, prompt: str, as_json: bool):
+    from viv.bus import BUS
+    from viv.tools import local
+    text = local.generate(ctx, prompt, as_json)
+    BUS.emit("card", "Modelo local", kind="data", ok=True, body="Esta etapa rodou no seu computador, sem gastar a cota do Gemini.")
+    return parse_json(text) if as_json else text
+
+
 def ask(ctx, prompt: str, as_json: bool = False):
-    """Resposta do modelo de texto a `prompt`: texto, ou objeto quando `as_json`."""
+    """Resposta a `prompt`: texto, ou objeto quando `as_json`. Conforme o ajuste "ia.local", um modelo local do
+    Ollama responde primeiro (economia) ou entra quando o Gemini falha (reserva); ver viv/tools/local.py."""
+    from viv.tools import local
+    mode = local.settings(ctx)["mode"]
+    fits = mode != "desligado" and len(prompt) <= local.MAX_CHARS
+    if fits and mode == "economia":
+        try:
+            return _local(ctx, prompt, as_json)
+        except Exception:
+            fits = False                       # o modelo local não deu conta: segue para o Gemini
+    try:
+        return _gemini(ctx, prompt, as_json)
+    except Exception as failure:
+        if not fits:
+            raise
+        try:
+            return _local(ctx, prompt, as_json)
+        except local.Missing as missing:
+            raise RuntimeError(f"{failure}. Um modelo local poderia assumir: {missing}") from None
+        except Exception:
+            raise failure from None
+
+
+def _gemini(ctx, prompt: str, as_json: bool = False):
     if ctx is None or ctx.client is None:
         raise RuntimeError("indisponível agora: sem conexão com o Gemini")
     tools = ctx.cfg.get("tools", {})

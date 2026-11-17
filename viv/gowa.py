@@ -65,6 +65,22 @@ def hhmm(stamp) -> str:
         return ""
 
 
+def epoch(stamp) -> float:
+    """Horário do GoWA (texto ISO ou número) -> segundos desde 1970; 0 quando não dá para ler."""
+    if isinstance(stamp, (int, float)):
+        return float(stamp) / (1000 if stamp > 1e12 else 1)
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def iso(when: float) -> str:
+    """Segundos desde 1970 -> o formato em que o GoWA guarda o horário (UTC)."""
+    from datetime import timezone
+    return datetime.fromtimestamp(when, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S+00:00")
+
+
 def age_hours(stamp, now: float) -> float:
     try:
         return (now - datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()) / 3600
@@ -144,6 +160,8 @@ class Gowa:
         self._groups: dict[str, str] = {}
         self._index: tuple[float, tuple] | None = None
         self._watching = threading.Event()
+        self._seen_path = self.folder / "lidas.json"     # até quando cada conversa foi lida no celular (epoch)
+        self._seen: dict[str, float] = self._load_seen()
 
     # ---- processo -------------------------------------------------------------------
     @property
@@ -156,7 +174,7 @@ class Gowa:
         args = [str(self.exe.resolve()), "rest", "--host=127.0.0.1", f"--port={self.port}", "--os=Viv",
                 "--ui-enabled=false", "--ui-auto-update=false", "--mcp-enabled=false", "--auto-download-media=false",
                 "--presence-pulse-enabled=false", "--presence-on-connect=unavailable",
-                f"--webhook=http://127.0.0.1:{self.viv_port}/api/whatsapp/evento", "--webhook-events=message",
+                f"--webhook=http://127.0.0.1:{self.viv_port}/api/whatsapp/evento", "--webhook-events=message,message.ack",
                 "--webhook-ignore-jids=@g.us,status@broadcast"]
         env = {**os.environ, "APP_BASIC_AUTH": f"viv:{self.password}", "WHATSAPP_WEBHOOK_SECRET": self.secret}
         return args, env
@@ -336,6 +354,32 @@ class Gowa:
             self._watching.clear()
         threading.Thread(target=loop, daemon=True, name="viv-gowa-login").start()
 
+    # ---- o que o usuário já leu --------------------------------------------------------------
+    def _load_seen(self) -> dict[str, float]:
+        try:
+            data = json.loads(self._seen_path.read_text(encoding="utf-8"))
+            return {str(k): float(v) for k, v in data.items()} if isinstance(data, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def mark_seen(self, jid: str, when: float | None = None) -> None:
+        """A conversa foi lida (no celular ou pela Viv) até `when`: o que veio antes não é mais “nova”."""
+        jid = self.canonical(jid)
+        when = float(when or self.clock())
+        if when <= self._seen.get(jid, 0):
+            return
+        self._seen[jid] = when
+        try:
+            self._seen_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._seen_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._seen), encoding="utf-8")
+            tmp.replace(self._seen_path)
+        except OSError:
+            pass
+
+    def seen_at(self, jid: str) -> float:
+        return self._seen.get(self.canonical(jid), 0.0)
+
     # ---- conversas -------------------------------------------------------------------------
     def messages(self, jid: str, limit: int) -> list[dict]:
         result = self._call("GET", f"/chat/{quote(jid, safe='@.')}/messages", params={"limit": int(limit)}) or {}
@@ -449,6 +493,9 @@ class Gowa:
                     if message.get("is_from_me"):
                         break
                     pending.insert(0, message)
+            # nova = ainda não lida; o resto do que está sem resposta já foi visto (no celular ou pela Viv)
+            seen = self.seen_at(jid)
+            unseen = [m for m in pending if epoch(m.get("timestamp")) > seen]
             preview = describe(last) if last else ""
             if preview and (mine or group):          # quem mandou a última: você, ou quem do grupo
                 preview = f"{self.author(last)}: {preview}"
@@ -456,9 +503,9 @@ class Gowa:
             name = self.group_name(jid, stored) if group else (stored if stored and not looks_like_number(stored)
                                                                else self.person(jid))
             rows.append({"name": name, "jid": jid, "group": group, "muted": silenced,
-                         "mine": mine, "last": preview, "unread": len(pending),
+                         "mine": mine, "last": preview, "unread": len(unseen), "waiting": len(pending),
                          "novas": [{"autor": self.author(m) if group else "", "texto": describe(m),
-                                    "hora": hhmm(m.get("timestamp"))} for m in pending[-3:]],
+                                    "hora": hhmm(m.get("timestamp"))} for m in (unseen or pending)[-3:]],
                          "photo": "" if group else self.avatar(jid)})
         return rows
 
@@ -467,6 +514,7 @@ class Gowa:
         from viv.tools.whatsapp import pick_chat
         wanted = " ".join(str(contact).split())
         if JID.fullmatch(wanted):                          # conversa já identificada (clique numa notificação)
+            wanted = self.canonical(wanted)
             return (self.group_name(wanted, "") if wanted.endswith("@g.us") else self.person(wanted)), wanted
         digits = "".join(c for c in wanted if c.isdigit())
         if digits and len(digits) >= 10 and len(digits) >= len(wanted.replace(" ", "")) - 4:
@@ -485,10 +533,34 @@ class Gowa:
             contacts = (self._call("GET", "/user/my/contacts") or {}).get("data") or []
             names = {str(c.get("name") or "").strip(): str(c["jid"]) for c in contacts if isinstance(c, dict) and c.get("jid")}
             chosen = pick_chat(list(names), wanted)
-        if chosen is None:
+        if chosen is None:                                # nome do perfil (“Chris”) de quem está salvo com outro nome
+            profiles = self.profile_names()
+            picked = pick_chat(list(profiles), wanted)
+            if picked is not None:
+                jid = self.canonical(profiles[picked])
+                return self.person(jid), jid
             similar = ", ".join([n for n in names if n][:5])
             raise GowaError(f"não achei uma conversa única para “{wanted}”" + (f". Parecidas: {similar}" if similar else ""))
-        return chosen, names[chosen]
+        # o mesmo contato pode vir como LID, que não tem mensagens guardadas: sempre o telefone
+        return chosen, self.canonical(names[chosen])
+
+    def profile_names(self) -> dict[str, str]:
+        """Nome de perfil (o que a pessoa escolheu no WhatsApp) -> JID, da base local, só para leitura."""
+        database = (self.folder / "storages" / "whatsapp.db").resolve()
+        found: dict[str, str] = {}
+        if not database.is_file():
+            return found
+        try:
+            connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True, timeout=2)
+            try:
+                for jid, push in connection.execute(
+                        "select their_jid, push_name from whatsmeow_contacts where push_name is not null and push_name != ''"):
+                    found.setdefault(str(push).strip(), str(jid))
+            finally:
+                connection.close()
+        except sqlite3.Error:
+            pass
+        return found
 
     def download(self, message_id: str, jid: str) -> bytes:
         result = self._call("GET", f"/message/{quote(str(message_id), safe='')}/download", params={"phone": jid},
@@ -520,10 +592,59 @@ class Gowa:
                     pass                          # foto que não baixou fica sem miniatura
         return rows
 
+    def history(self, jid: str = "", since: float | None = None, until: float | None = None, text: str = "",
+                limit: int = 80) -> list[dict]:
+        """Mensagens guardadas pelo serviço (base local, só leitura), filtradas por conversa, período (epoch) e
+        texto, em ordem de tempo, no formato de /chat/<jid>/messages."""
+        database = (self.folder / "storages" / "chatstorage.db").resolve()
+        if not database.is_file():
+            raise GowaError("o histórico do WhatsApp ainda não foi guardado neste computador")
+        where, args = ["1 = 1"], []
+        if jid:
+            where.append("chat_jid = ?")
+            args.append(self.canonical(jid))
+        if since is not None:
+            where.append("timestamp >= ?")
+            args.append(iso(since))
+        if until is not None:
+            where.append("timestamp <= ?")
+            args.append(iso(until))
+        if text:
+            where.append("content like ? escape '!'")
+            args.append("%" + str(text).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%")
+        query = ("select id, chat_jid, sender, content, timestamp, is_from_me, media_type from messages "
+                 f"where {' and '.join(where)} order by timestamp desc limit ?")
+        try:
+            connection = sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True, timeout=3)
+            try:
+                found = connection.execute(query, (*args, max(1, min(500, int(limit))))).fetchall()
+            finally:
+                connection.close()
+        except sqlite3.Error as exc:
+            raise GowaError(f"não consegui ler o histórico do WhatsApp ({exc})") from None
+        rows = [{"id": ident, "chat_jid": chat, "sender_jid": sender, "content": content or "", "timestamp": stamp,
+                 "is_from_me": bool(mine), "media_type": media or ""}
+                for ident, chat, sender, content, stamp, mine, media in found]
+        return list(reversed(rows))
+
     def send(self, jid: str, message: str) -> None:
         self._call("POST", "/send/message", json_body={"phone": jid, "message": message}, timeout=30, uncertain=True)
 
     # ---- mensagens novas ------------------------------------------------------------------------
+    def _receipt(self, payload: dict) -> None:
+        """Confirmação de leitura. “read-self” é o próprio usuário lendo em outro aparelho (o celular): a conversa
+        deixa de ter mensagens novas até aquele momento."""
+        kind = str(payload.get("receipt_type") or payload.get("type") or "").lower().replace("_", "-")
+        try:                                          # diagnóstico: só os nomes dos campos e o tipo, sem conteúdo
+            (self.folder / "ultimo_ack.json").write_text(json.dumps({"campos": sorted(payload), "tipo": kind}), encoding="utf-8")
+        except OSError:
+            pass
+        if "self" not in kind or "read" not in kind:
+            return
+        chat = str(payload.get("chat_id") or payload.get("chat") or payload.get("from") or "")
+        if JID.fullmatch(chat):
+            self.mark_seen(chat, max(epoch(payload.get("timestamp")), self.clock() - 5))
+
     def webhook(self, body: bytes, signature: str, host: str) -> bool:
         """Evento do GoWA. Só vale vindo deste computador e com a assinatura certa."""
         if host not in ("127.0.0.1", "::1"):
@@ -536,6 +657,9 @@ class Gowa:
         except ValueError:
             return True
         payload = event.get("payload") if isinstance(event, dict) else None
+        if isinstance(payload, dict) and event.get("event") == "message.ack":
+            self._receipt(payload)
+            return True
         if not isinstance(payload, dict) or event.get("event") != "message":
             return True
         chat = str(payload.get("chat_id") or "")

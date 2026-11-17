@@ -29,3 +29,7 @@ pypdf
 #   pip install resemblyzer --no-deps
 #   pip install librosa scipy webrtcvad-wheels
 truststore
+# Miniatura: janelinha só com o avatar quando a Viv está minimizada
+pywebview; sys_platform == "win32"
+# Música: o avatar dança com o som do PC (captura em loopback)
+soundcard; sys_platform == "win32"

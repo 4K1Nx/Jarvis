@@ -152,7 +152,8 @@ def test_search_panel_lists_results_with_snippets_and_safe_links(page):
         {"title": "<b>Fonte B</b>", "url": "https://example.org/b", "body": "<script>window.__xss=1</script>"},
         {"title": "Ruim", "url": "javascript:alert(1)", "body": "x"}])
     assert page.locator(".result").count() == 2
-    assert page.locator(".result-title").first.get_attribute("href") == "https://www.example.com/a"
+    assert page.locator(".result").first.get_attribute("href") == "https://www.example.com/a"
+    assert page.locator(".result.lead").count() == 1 and page.locator(".result-n").last.inner_text() == "2"
     assert "example.com" in page.locator(".result-host").first.inner_text()
     assert "Resumo da fonte A" in page.inner_text(".card.panel") and page.evaluate("window.__xss") is None
     assert page.locator(".card.panel b, .card.panel script").count() == 0
@@ -160,6 +161,7 @@ def test_search_panel_lists_results_with_snippets_and_safe_links(page):
 
 def test_confirm_card_posts_decision_and_is_removed(site, page):
     _, _, gate = site
+    emit(page, channel="state", state="speaking")              # ela já está falando o pedido: o cartão entra na hora
     emit(page, channel="confirm", text="Apagar: C:/tmp/x.txt", name="fs_delete", args={}, seconds=30)
     assert page.locator(".confirm button").count() == 2
     emit(page, channel="confirm_hint", text="Voz não reconhecida. Confirme na tela.")
@@ -251,6 +253,7 @@ def test_reduced_motion_disables_card_animations(site, browser):
     url, _, _ = site
     context = browser.new_context(reduced_motion="reduce", viewport={"width": 1280, "height": 800})
     p = context.new_page(); p.goto(url); p.wait_for_function("window.VivHUD")
+    p.evaluate("() => { document.documentElement.dataset.motion = ''; }")      # “Animações completas” desligado
     p.evaluate("e => window.VivHUD.handle(e)", {"channel": "card", "text": "Lista", "kind": "content", "body": "a", "ok": True})
     p.wait_for_selector(".card.panel.in")
     assert p.evaluate("getComputedStyle(document.querySelector('.card.panel.in')).animationName") == "none"
@@ -259,6 +262,7 @@ def test_reduced_motion_disables_card_animations(site, browser):
 
 
 def test_confirm_without_voice_enrollment_tells_user_to_click(page):
+    emit(page, channel="state", state="speaking")
     emit(page, channel="confirm", text="Limpar o PC", name="system_limpeza", args={}, seconds=30, voice=False)
     assert "Clique em Sim" in page.inner_text(".confirm") and "Limpar o PC" in page.inner_text(".confirm")
 
@@ -523,3 +527,245 @@ def test_pixel_avatar_follows_state_and_mood_and_can_be_hidden(page):
     assert not avatar.is_visible()
     emit(page, channel="hud", avatar=True)
     assert avatar.is_visible() and page.errors == []
+
+
+def test_confirm_card_waits_for_her_voice_but_never_more_than_two_seconds(page):
+    emit(page, channel="state", state="thinking")
+    emit(page, channel="confirm", text="Apagar pasta", name="fs_delete", args={}, seconds=30)
+    assert not page.locator(".confirm").is_visible()            # ela ainda não disse o que vai fazer
+    emit(page, channel="state", state="speaking")
+    page.wait_for_timeout(250)
+    assert page.locator(".confirm").is_visible()
+    emit(page, channel="confirm_done", ok=False)
+    emit(page, channel="state", state="thinking")
+    emit(page, channel="confirm", text="Apagar pasta", name="fs_delete", args={}, seconds=30)
+    page.wait_for_timeout(2400)
+    assert page.locator(".confirm").is_visible()                # calada, o cartão aparece mesmo assim
+    emit(page, channel="confirm_done", ok=False)
+
+
+def test_questions_stack_in_one_card_with_the_suggestion_marked(page):
+    emit(page, channel="ask", text="Tamanho?", options=["Curta", "Média"], suggestion="Média")
+    emit(page, channel="ask", text="<b>Tema</b>?", options=["Claro", "Escuro"], suggestion="")
+    assert page.locator(".ask-row").count() == 2 and page.locator(".ask button.suggested").inner_text() == "Média"
+    assert page.locator(".ask b").count() == 0                  # o texto da pergunta nunca vira HTML
+    emit(page, channel="ask_done")
+    assert page.locator(".ask").count() == 0
+
+
+def test_chart_panel_draws_gauges_and_updates_in_place(page):
+    chart = {"type": "medidores", "unit": "", "items": [{"label": "CPU", "value": 20, "max": 100, "unit": "%"},
+                                                         {"label": "Memória", "value": 50, "max": 100, "unit": "%"}]}
+    emit(page, channel="card", text="PC ao vivo", kind="chart", chart=chart, live="pc", ok=True)
+    page.wait_for_timeout(900)
+    assert page.locator(".gauge").count() == 2 and page.locator(".gauge-value").first.inner_text() == "20%"
+    chart["items"][0]["value"] = 80
+    emit(page, channel="card", text="PC ao vivo", kind="chart", chart=chart, live="pc", ok=True)
+    page.wait_for_timeout(900)
+    assert page.locator(".card.panel").count() == 1 and page.locator(".gauge-value").first.inner_text() == "80%"
+    emit(page, channel="card", text="Vendas", kind="chart", ok=True,
+         chart={"type": "barras", "unit": " MB", "items": [{"label": "<i>a</i>", "value": 3}, {"label": "b", "value": 9}]})
+    page.wait_for_timeout(500)
+    assert page.locator(".bar-row").count() == 2 and page.locator(".bar-label i").count() == 0
+
+
+def test_hibernating_shows_its_own_label_and_hides_the_hibernate_button(page):
+    emit(page, channel="state", state="sleeping", hibernating=True)
+    assert page.inner_text("#state-label") == "Hibernando" and not page.locator("#hibernate").is_visible()
+    assert page.locator("#hibernation").is_visible() and "Não estou ouvindo" in page.inner_text("#hibernation")
+    page.wait_for_timeout(1100)                                  # o núcleo apaga aos poucos
+    assert float(page.evaluate("() => getComputedStyle(document.getElementById('core')).opacity")) < 0.5
+    emit(page, channel="state", state="listening", hibernating=False)
+    assert page.inner_text("#state-label") == "Ouvindo" and page.locator("#hibernate").is_visible()
+
+
+LIT = """() => {
+  const c = document.getElementById('avatar-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let n = 0;                                     // brilho total aceso: os olhos crescem com a voz
+  for (let i = 3; i < d.length; i += 4) n += d[i];
+  return n;
+}"""
+
+
+def test_avatar_eyes_pulse_with_her_voice_and_settle_in_the_pauses(page):
+    emit(page, channel="hud", avatar=True)
+    emit(page, channel="state", state="speaking")
+    page.wait_for_timeout(1600)                              # passa a carinha de quem acabou de acordar
+    sizes = []
+    for volume in (0.0, 0.9, 0.0):
+        for _ in range(12):                                  # o volume chega 20 vezes por segundo, como no áudio real
+            emit(page, channel="level", source="out", value=volume)
+            page.wait_for_timeout(50)
+        sizes.append(page.evaluate(LIT))
+    quiet, loud, pause = sizes
+    assert loud > quiet * 1.05 and abs(pause - quiet) < quiet * .05, sizes      # crescem com o som, voltam no silêncio
+    emit(page, channel="state", state="listening")
+
+
+def test_avatar_eyes_follow_the_mouse(page):
+    emit(page, channel="hud", avatar=True)
+    emit(page, channel="state", state="listening")
+    page.wait_for_timeout(1600)
+    center = page.evaluate("""() => { const c = document.getElementById('avatar-canvas'), d = c.getContext('2d')
+      .getImageData(0, 0, c.width, c.height).data; let sx = 0, n = 0;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const a = d[(y * c.width + x) * 4 + 3]; sx += x * a; n += a; }
+      return sx / n / c.width; }""")
+    page.mouse.move(1270, 700)                               # bem à direita da telinha
+    page.wait_for_timeout(700)
+    right = page.evaluate("""() => { const c = document.getElementById('avatar-canvas'), d = c.getContext('2d')
+      .getImageData(0, 0, c.width, c.height).data; let sx = 0, n = 0;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const a = d[(y * c.width + x) * 4 + 3]; sx += x * a; n += a; }
+      return sx / n / c.width; }""")
+    assert right > center + .05, (center, right)
+
+def test_briefing_and_email_panels_are_drawn_without_parsing_html(page):
+    emit(page, channel="card", text="Resumo do dia", kind="briefing", ok=True, brief={
+        "hora": "08:12", "dia": "segunda-feira", "clima": {"city": "Fortaleza", "temp": 29, "desc": "<b>Sol</b>", "max": 32, "rain": 20},
+        "numeros": [{"label": "e-mails não lidos", "value": 7}, {"label": "de disco livre", "value": "8%", "tone": "bad"}],
+        "listas": [{"titulo": "Lembretes", "itens": ["<i>Pagar a luz</i>", "Oficina"]}]})
+    assert page.inner_text(".brief-when b") == "08:12" and page.locator(".brief-tile").count() == 2
+    assert page.locator(".brief-list li").count() == 2 and page.locator(".brief b b, .brief i").count() == 0
+    emit(page, channel="card", text="E-mails", kind="content", format="tabela", ok=True, body="x | y",
+         emails=[{"n": 1, "de": "Ana <ana@x.com>", "assunto": "<b>Oi</b>", "data": "16/11"}])
+    assert page.locator(".mail").count() == 1 and page.inner_text(".mail-from") == "Ana" and page.locator(".mail b b").count() == 0
+
+
+def test_parallax_moves_the_layers_with_the_pointer(page):
+    size = page.viewport_size
+    page.mouse.move(size["width"] - 5, size["height"] - 5)
+    read = "() => [getComputedStyle(document.documentElement).getPropertyValue('--px'), getComputedStyle(document.getElementById('core')).transform]"
+    for _ in range(100):                                        # as camadas chegam ao lado do mouse e os cartões param lá
+        shift = page.evaluate(read)
+        if float(shift[0] or 0) > 0.9:
+            break
+        page.wait_for_timeout(100)
+    assert float(shift[0]) > 0.9 and shift[1] not in ("none", "matrix(1, 0, 0, 1, 0, 0)")
+    px = "() => getComputedStyle(document.documentElement).getPropertyValue('--px')"
+    for _ in range(60):                                         # com o mouse parado, os cartões param de se mexer
+        still = page.evaluate(px)
+        page.wait_for_timeout(300)
+        if page.evaluate(px) == still:
+            break
+    assert page.evaluate(px) == still
+
+
+def test_buttons_are_styled_and_never_fall_back_to_the_browser_default(page):
+    emit(page, channel="state", state="listening", hibernating=False)
+    for selector in ("#hibernate", "#chat-open"):
+        look = page.evaluate("s => { const c = getComputedStyle(document.querySelector(s)); return [c.backgroundColor, c.color]; }", selector)
+        assert look[0] in ("rgba(0, 0, 0, 0)", "transparent") and look[1] != "rgb(0, 0, 0)", (selector, look)
+        assert page.inner_text(selector).strip()
+    assert "?v=" in page.evaluate("() => document.querySelector('link[rel=stylesheet]').href")
+
+
+def test_people_in_the_conversation_show_at_the_top(page):
+    emit(page, channel="presence", people=["Gabriel"])
+    assert not page.locator("#present").is_visible()             # sozinho, nada a mostrar
+    emit(page, channel="presence", people=["Gabriel", "<b>Ana</b>", "voz desconhecida 1"])
+    emit(page, channel="speaker", text="Gabriel", known=True, owner=True)
+    assert page.locator("#present b").count() == 2 and page.inner_text("#present i") == "+1"
+    assert page.inner_text("#present b.now") == "Gabriel" and page.locator("#present b b").count() == 0
+    emit(page, channel="presence", people=["Gabriel"])
+    assert not page.locator("#present").is_visible()
+
+
+def test_chat_sends_typed_messages_shows_the_conversation_and_switches_mode(site, page):
+    _, viv, _ = site
+    viv.calls.clear()
+    assert not page.locator("#chat").is_visible()
+    emit(page, channel="chat", open=True, text_only=False)       # ela abriu o chat a pedido
+    assert page.locator("#chat").is_visible()
+    page.fill("#chat-input", "oi, <b>Viv</b>")
+    page.keyboard.press("Enter")
+    for _ in range(100):
+        if viv.calls:
+            break
+        page.wait_for_timeout(20)
+    assert viv.calls == [("type", "oi, <b>Viv</b>")]
+    emit(page, channel="transcript", text="oi, <b>Viv</b>", role="user", final=True, typed=True)      # o eco não duplica
+    emit(page, channel="transcript", text="Oi", role="viv", final=False)
+    emit(page, channel="transcript", text="Oi! Tudo bem?", role="viv", final=True)
+    emit(page, channel="transcript", text="tudo", role="user", final=True)                             # falado em voz alta
+    assert [m.inner_text() for m in page.locator(".chat-msg").all()] == ["oi, <b>Viv</b>", "Oi! Tudo bem?", "tudo"]
+    assert page.locator(".chat-msg b").count() == 0
+    page.click('.chat-modes [data-mode="texto"]')
+    for _ in range(100):
+        if viv.text_only:
+            break
+        page.wait_for_timeout(20)
+    assert viv.text_only is True and page.get_attribute('.chat-modes [data-mode="texto"]', "aria-pressed") == "true"
+    page.click("#chat-close")                                    # fechar o chat devolve a voz
+    for _ in range(100):
+        if not viv.text_only:
+            break
+        page.wait_for_timeout(20)
+    assert viv.text_only is False and not page.locator("#chat").is_visible()
+
+
+def test_chat_can_talk_to_a_local_model_with_its_own_conversation(site, page, monkeypatch):
+    from viv.tools import local
+    _, viv, _ = site
+    monkeypatch.setattr(local, "installed", lambda ctx, http=None: [{"nome": "rpg:8b", "gb": 4.9}])
+    monkeypatch.setattr(local, "chat", lambda ctx, model, messages, on_text=None, stream=None: "Você entra na <b>taverna</b>.")
+    page.evaluate("() => localStorage.removeItem('viv-chat-modelo')")
+    page.click("#chat-open")
+    page.wait_for_function("document.querySelectorAll('#chat-model option').length === 2")
+    assert not page.locator("#chat-new").is_visible()
+    page.select_option("#chat-model", "rpg:8b")
+    assert page.locator("#chat-new").is_visible() and page.locator('.chat-modes [data-mode="texto"]').is_disabled()
+    viv.calls.clear()
+    page.fill("#chat-input", "começa a aventura")
+    page.keyboard.press("Enter")
+    page.wait_for_function("[...document.querySelectorAll('.chat-msg.viv')].some(m => m.textContent.includes('taverna'))")
+    assert [m.inner_text() for m in page.locator(".chat-msg").all()] == ["começa a aventura", "Você entra na <b>taverna</b>."]
+    assert viv.calls == [] and page.locator(".chat-msg b").count() == 0
+    emit(page, channel="transcript", text="fala da Viv", role="viv", final=True)       # a conversa com a Viv fica na dela
+    assert len(page.locator(".chat-msg").all()) == 2
+    page.select_option("#chat-model", "viv")
+    assert [m.inner_text() for m in page.locator(".chat-msg").all()] == ["fala da Viv"]
+    page.select_option("#chat-model", "rpg:8b")
+    assert len(page.locator(".chat-msg").all()) == 2
+    page.click("#chat-new")
+    assert page.locator(".chat-msg").count() == 0
+    page.select_option("#chat-model", "viv")
+    page.click("#chat-close")
+    assert page.errors == []
+
+
+def test_miniature_shows_only_the_avatar_and_flags_a_pending_confirmation(site, browser):
+    url, _, _ = site
+    p = browser.new_page(viewport={"width": 184, "height": 136})
+    errors = []
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    p.goto(url + "/mini?offline")
+    p.wait_for_function("window.VivMini && window.VivAvatar")
+    assert p.evaluate("() => document.getElementById('avatar-canvas').getBoundingClientRect().width") > 100
+    p.evaluate("e => window.VivMini.handle(e)", {"channel": "state", "state": "speaking", "hibernating": False})
+    assert p.get_attribute("#avatar", "data-state") == "speaking" and not p.locator("#alert").is_visible()
+    p.evaluate("e => window.VivMini.handle(e)", {"channel": "confirm", "text": "Apagar?"})
+    assert p.locator("#alert").is_visible()
+    p.evaluate("e => window.VivMini.handle(e)", {"channel": "confirm_done", "ok": True})
+    p.evaluate("e => window.VivMini.handle(e)", {"channel": "mood", "name": "magoada", "text": "Magoada", "palette": ["#8f8fd6", "#6b5b9b", "#b0a8e8"]})
+    p.wait_for_timeout(800)                                  # os olhos abrem com uma mola
+    lit = p.evaluate("() => { const c = document.getElementById('avatar-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; }")
+    assert lit > 50 and not p.locator("#alert").is_visible() and errors == []
+    assert "Magoada".lower() in p.get_attribute("#avatar", "title").lower()
+    p.close()
+
+
+def test_full_animations_keep_the_thinking_eyes_spinning_even_with_windows_in_reduced_mode(site, browser):
+    url, _, _ = site
+    context = browser.new_context(reduced_motion="reduce", viewport={"width": 280, "height": 200})
+    p = context.new_page()
+    p.goto(url + "/mini?offline")
+    p.wait_for_function("window.VivAvatar")
+    frame = """() => { const c = document.getElementById('avatar-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let h = 0; for (let i = 3; i < d.length; i += 4) h = (h * 31 + (d[i] >> 6)) % 1000000007; return h; }"""
+    p.evaluate("() => { document.documentElement.dataset.motion = ''; window.VivAvatar.setState('executing'); }")
+    p.wait_for_timeout(3000)                                 # passa o susto de acordar e o anel termina de aparecer
+    first = p.evaluate(frame); p.wait_for_timeout(300)
+    assert p.evaluate(frame) == first, "sem “Animações completas”, segue o Windows: parado"
+    p.evaluate("() => { document.documentElement.dataset.motion = 'full'; }")
+    first = p.evaluate(frame); p.wait_for_timeout(300)
+    assert p.evaluate(frame) != first, "com “Animações completas”, gira"
+    context.close()

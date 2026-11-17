@@ -24,15 +24,29 @@ def generate(client, model: str, contents: list, sleep=time.sleep) -> str:
 def look(ctx, question: str) -> str:
     cfg = ctx.cfg.get("tools", {}).get("vision", {})
     path = capture(cfg.get("screenshot_path", "data/screen.png"))
-    if ctx.client is None:
-        raise RuntimeError("análise visual indisponível: sem conexão com o Gemini")
-    from google.genai import types
-    image = types.Part.from_bytes(data=Path(path).read_bytes(), mime_type="image/png")
-    return generate(ctx.client, cfg.get("model", "gemini-3.8-flash"), [image, question + " Responda em português, de forma objetiva."])
+    data, ask = Path(path).read_bytes(), question + " Responda em português, de forma objetiva."
+    try:
+        if ctx.client is None:
+            raise RuntimeError("análise visual indisponível: sem conexão com o Gemini")
+        from google.genai import types
+        image = types.Part.from_bytes(data=data, mime_type="image/png")
+        return generate(ctx.client, cfg.get("model", "gemini-3.8-flash"), [image, ask])
+    except Exception as failure:
+        # o Gemini falhou (cota, sobrecarga, prazo): um modelo local de visão olha a tela no lugar dele
+        from viv.tools import local
+        if local.settings(ctx)["mode"] == "desligado":
+            raise
+        try:
+            return local.generate(ctx, ask, image=data)
+        except local.Missing as missing:
+            raise RuntimeError(f"{failure}. Um modelo local poderia assumir: {missing}") from None
+        except Exception:
+            raise failure from None
 
 
 @tool("vision_analyze_screen", "Capturar a tela e analisar o que está visível. Use quando a resposta depender "
-      "do que aparece na tela do usuário (um download, um erro, um progresso).",
+      "do que aparece na tela do usuário (um download, um erro, um progresso). Para clicar em algo, não analise antes: "
+      "chame tela_clicar direto, que já olha a tela e acha o lugar.",
       {"question": {"type": "string", "required": False}}, card=False)
 def analyze_screen(question=DEFAULT_QUESTION, ctx=None):
     result = look(ctx, question) or "não consegui interpretar a tela"

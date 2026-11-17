@@ -265,6 +265,31 @@ async def test_notify_while_sleeping_wakes_and_delivers(env):
     assert "tomar água" in env.connect.session.sent_text[0]
 
 
+async def test_held_notice_waits_for_wake_and_is_built_then(env):
+    built = []
+    env.viv.hold(lambda: built.append(1) or "Resumo de tudo: dois lembretes")
+    await asyncio.sleep(0.1)
+    assert env.viv.state == State.SLEEPING and env.connect.configs == [] and built == []
+    s = await awake(env)
+    await until(lambda: s.sent_text)
+    assert built == [1] and "Resumo de tudo" in s.sent_text[0]
+
+
+async def test_tell_holds_while_sleeping_and_speaks_when_awake(env):
+    env.viv.tell("O agente terminou o projeto")
+    await asyncio.sleep(0.05)
+    assert env.connect.configs == []
+    s = await awake(env)
+    await until(lambda: s.sent_text)
+    assert "O agente terminou" in s.sent_text[0]
+
+
+async def test_failing_held_summary_does_not_block_wake(env):
+    env.viv.hold(lambda: 1 / 0)
+    await awake(env)
+    assert env.viv.state == State.LISTENING
+
+
 def test_build_config_has_audio_transcription_tools_and_persona():
     cfg = build_config(CFG, FakeMemory(), handle=None)
     assert cfg["response_modalities"] == ["AUDIO"]
@@ -316,3 +341,164 @@ async def test_session_already_connected_starts_a_fresh_session(env):
     await until(lambda: len(env.connect.sessions) == 2 and env.viv.state == State.LISTENING)
     handles = [c["session_resumption"]["handle"] for c in env.connect.configs]
     assert handles == [None, "alca-1", None], "depois do 1008, começa sem a alça antiga"
+
+
+async def test_announce_waits_for_playback(env):
+    session = await awake(env)
+    env.audio.playing = True
+    env.viv.announce("slide pronto")
+    await asyncio.sleep(0.2)
+    assert not any("slide pronto" in t for t in session.sent_text)
+    env.audio.playing = False
+    await until(lambda: any("slide pronto" in t for t in session.sent_text))
+
+
+async def test_announce_wakes_sleeping_viv(env):
+    env.viv.announce("slide pronto")
+    await until(lambda: env.connect.sessions and any("slide pronto" in t for t in env.connect.session.sent_text))
+
+
+async def test_silent_viv_is_reminded_to_ask_for_the_confirmation_once(env):
+    session = await awake(env)
+    env.gate.timeout = 30
+    env.gate.pending = {"key": ("t", "{}"), "text": "Apagar arquivo", "expires": env.clock.now + 30}
+    await asyncio.sleep(0.15)
+    assert not any("cartão de confirmação" in t for t in session.sent_text)     # ainda dentro dos 2,5 s
+    env.clock.now += 3
+    await until(lambda: any("Apagar arquivo" in t for t in session.sent_text))
+    await asyncio.sleep(0.15)
+    assert sum("cartão de confirmação" in t for t in session.sent_text) == 1
+
+
+async def test_viv_already_explaining_is_not_reminded(env):
+    session = await awake(env)
+    env.gate.timeout = 30
+    env.gate.pending = {"key": ("t", "{}"), "text": "Apagar arquivo", "expires": env.clock.now + 30}
+    session.push(msg(data=b"\x00" * 320))                  # ela começou a falar o pedido
+    await until(lambda: env.audio.played)
+    env.clock.now += 3
+    await asyncio.sleep(0.2)
+    assert not any("cartão de confirmação" in t for t in session.sent_text)
+
+
+async def _say_goodbye(env, s, tool):
+    s.push(msg(tool_calls=[("id1", tool, {})]))
+    await until(lambda: s.tool_responses)
+    s.push(msg(data=b"\x01\x02"))
+    await until(lambda: env.viv.state == State.SPEAKING)
+    s.push(msg(turn_complete=True))
+    await until(lambda: env.viv.state == State.SLEEPING)
+
+
+async def test_hibernating_viv_ignores_voice_and_notices_until_the_button(env):
+    s = await awake(env)
+    await _say_goodbye(env, s, "viv_hibernar")
+    await until(lambda: env.viv.hibernating)
+    assert env.gate.submitted == [] and env.states()[-1] == "sleeping"
+    assert [e for e in env.events if e[0] == "state"][-1][2]["hibernating"] is True
+    sessions = len(env.connect.sessions)
+    env.viv.wake("name")
+    env.viv.wake("clap")
+    env.viv.notify("Lembrete: tomar água")
+    env.viv.announce("slide pronto")
+    await asyncio.sleep(0.5)
+    assert len(env.connect.sessions) == sessions and env.viv.state == State.SLEEPING     # nada acordou
+    env.viv.wake("button")
+    await until(lambda: len(env.connect.sessions) == sessions + 1)
+    assert not env.viv.hibernating
+    sent = lambda: " ".join(env.connect.session.sent_text)                                # noqa: E731
+    await until(lambda: "tomar água" in sent() and "slide pronto" in sent())             # os avisos esperaram a volta
+
+
+async def test_hibernate_button_works_asleep_or_awake(env):
+    env.viv.hibernate()
+    await asyncio.sleep(0.05)
+    assert env.viv.hibernating and [e for e in env.events if e[0] == "state"][-1][2]["hibernating"] is True
+    env.viv.wake("name")
+    await asyncio.sleep(0.3)
+    assert not env.connect.sessions
+    await awake(env)                                          # o botão acorda
+    env.viv.hibernate()
+    await until(lambda: env.viv.state == State.SLEEPING and env.viv.hibernating)
+    env.viv.wake("hotkey")
+    await until(lambda: env.viv.state == State.LISTENING and not env.viv.hibernating)
+
+
+async def test_quit_closes_the_program_after_the_farewell(env):
+    quits = []
+    env.viv.on_quit = lambda: quits.append(1)
+    s = await awake(env)
+    s.push(msg(tool_calls=[("id1", "viv_fechar", {})]))
+    await until(lambda: s.tool_responses)
+    assert quits == []                                         # só depois de se despedir
+    s.push(msg(data=b"\x01\x02"))
+    s.push(msg(turn_complete=True))
+    await until(lambda: quits == [1])
+
+
+class _Crowd:
+    """Reconhecimento de voz falso: diz quem está na conversa."""
+    enrolled, owner, people = True, "Gabriel", {}
+
+    def __init__(self):
+        self.now = ["Gabriel"]
+
+    def hear(self, audio):
+        return self.who()
+
+    def who(self):
+        return {"name": "Gabriel", "owner": True, "known": True, "heard": True}
+
+    def present(self):
+        return list(self.now)
+
+
+async def test_a_second_person_is_never_announced_to_the_model_only_noted_with_a_tool_result(env):
+    env.viv.speaker = crowd = _Crowd()
+    s = await awake(env)
+    crowd.now = ["Gabriel", "Ana"]
+    s.push(msg(input_text="oi", input_finished=True))
+    await until(lambda: env.gate.utterances == ["oi"])
+    await asyncio.sleep(0.1)
+    assert s.sent_text == []                                   # nada que a faça comentar quem chegou
+    s.push(msg(tool_calls=[("id1", "system_status", {})]))
+    await until(lambda: s.tool_responses)
+    assert "pessoas na conversa agora: Gabriel, Ana" in s.tool_responses[0].response["result"]
+
+
+async def test_typed_message_wakes_viv_and_counts_as_the_users_turn(env):
+    env.viv.type("que horas são?")
+    await until(lambda: env.connect.sessions and "que horas são?" in env.connect.session.sent_text)
+    assert ("user", "que horas são?") in [(e[2].get("role"), e[1]) for e in env.events if e[0] == "transcript"]
+    assert env.gate.utterances == []                           # texto digitado nunca confirma uma ação perigosa
+
+
+async def test_typing_wakes_even_a_hibernating_viv(env):
+    env.viv.hibernate()
+    await asyncio.sleep(0.05)
+    env.viv.type("voltei")
+    await until(lambda: env.connect.sessions and "voltei" in env.connect.session.sent_text)
+    assert not env.viv.hibernating
+
+
+async def test_text_only_chat_mutes_her_voice_closes_the_mic_and_still_writes_the_answer(env):
+    s = await awake(env)
+    env.viv.set_text_only(True)
+    env.audio.frames = [b"\x05" * 640] * 3
+    await asyncio.sleep(0.15)
+    assert all(frame == bytes(640) for frame in s.sent_audio)   # o microfone não chega ao modelo
+    s.push(msg(data=b"\x01\x02", output_text="São três horas."))
+    s.push(msg(turn_complete=True))
+    await until(lambda: any(e[0] == "transcript" and e[2].get("role") == "viv" and e[2].get("final") for e in env.events))
+    assert env.audio.played == []                              # ela não fala em voz alta
+    assert any(e[0] == "chat" and e[2].get("text_only") is True for e in env.events)
+    env.viv.set_text_only(False)
+    s.push(msg(data=b"\x03\x04"))
+    await until(lambda: env.audio.played == [b"\x03\x04"])
+
+
+async def test_viv_can_open_the_chat_when_asked(env):
+    s = await awake(env)
+    s.push(msg(tool_calls=[("id1", "chat_abrir", {})]))
+    await until(lambda: s.tool_responses)
+    assert any(e[0] == "chat" and e[2].get("open") for e in env.events) and env.gate.submitted == []

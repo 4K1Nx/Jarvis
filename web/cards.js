@@ -10,9 +10,9 @@
   const layer = document.getElementById('cards');
   const links = document.getElementById('links');
   const confirmSlot = document.getElementById('confirm-slot');
-  const PANEL_KINDS = { search: 1, vision: 1, content: 1, weather: 1 };
+  const PANEL_KINDS = { search: 1, vision: 1, content: 1, weather: 1, chart: 1, briefing: 1 };
   const PANEL_LIFE = 75000, TOAST_LIFE = 8000, TOASTS = 4;
-  const KINDS = { action: 1, search: 1, vision: 1, data: 1, content: 1, weather: 1 };
+  const KINDS = { action: 1, search: 1, vision: 1, data: 1, content: 1, weather: 1, chart: 1, briefing: 1, music: 1 };
   const toasts = [];        // {el}, na ordem em que chegaram
   let panel = null;         // {el}
   let confirmTimer = null;
@@ -178,24 +178,97 @@
   }
 
   // ---- conteúdo -----------------------------------------------------------
+  /* Resumo com títulos (## Clima, ## WhatsApp...): cada título vira um bloco com o nome em destaque e as linhas
+     embaixo, em vez de tudo misturado numa lista. */
+  function sections(body) {
+    const box = el('div', 'sections'), groups = [];
+    String(body || '').replace(/\r/g, '').split('\n').map(s => s.trim()).filter(Boolean).forEach(line => {
+      const heading = /^#{1,4}\s+(.*)$/.exec(line);
+      if (heading || !groups.length) groups.push({ title: heading ? heading[1] : '', rows: [] });
+      if (!heading) groups[groups.length - 1].rows.push(line.replace(ITEM, ''));
+    });
+    groups.forEach(group => {
+      const sec = el('section', 'sec');
+      if (group.title) sec.append(inline(el('h4', 'sec-title'), group.title));
+      group.rows.forEach(row => sec.append(inline(el('div', 'sec-row'), row)));
+      box.append(sec);
+    });
+    return box;
+  }
+
   function content(body, format) {
+    const text = String(body || '');
+    if (/^\s*#{1,4}\s+\S/m.test(text) && !/^\s*```/m.test(text) && !/^\s*\|/m.test(text)) return sections(text);
     const lines = String(body || '').split('\n').map(s => s.trim()).filter(Boolean);
     if (format === 'lista') return list(lines, false);
     if (format === 'tabela') return table(lines);
     return rich(body);
   }
 
+  // Pesquisa: a primeira fonte vem em destaque, como resposta; as outras, em cartões numerados lado a lado,
+  // cada um com o selo do site. O número é o mesmo que a Viv usa ao falar (“a fonte 2”).
+  const HUES = [330, 190, 265, 40, 150, 15];
   function results(list) {
     const box = el('div', 'results');
-    list.slice(0, 5).forEach(item => {
-      if (!safeUrl(item.url)) return;
-      const row = el('div', 'result');
-      const a = el('a', 'result-title', item.title || item.url);
-      a.href = item.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    const grid = el('div', 'result-grid');
+    list.filter(item => safeUrl(item.url)).slice(0, 5).forEach((item, index) => {
       let host = '';
       try { host = new URL(item.url).hostname.replace(/^www\./, ''); } catch (error) { /* url inválida */ }
-      row.append(a, el('span', 'result-host', host));
-      if (item.body) row.append(el('p', 'result-body', item.body));
+      const row = el('a', 'result' + (index === 0 ? ' lead' : ''));
+      row.href = item.url; row.target = '_blank'; row.rel = 'noopener noreferrer';
+      const site = el('span', 'result-site');
+      const badge = el('i', 'result-badge', (host[0] || '?').toUpperCase());
+      badge.style.setProperty('--hue', HUES[[...host].reduce((sum, c) => sum + c.charCodeAt(0), 0) % HUES.length]);
+      site.append(badge, el('span', 'result-host', host), el('span', 'result-n', String(index + 1)));
+      row.append(site, el('span', 'result-title', item.title || item.url));
+      if (item.body) row.append(el('span', 'result-body', item.body));
+      (index === 0 ? box : grid).append(row);
+    });
+    if (grid.children.length) box.append(grid);
+    return box;
+  }
+
+  // Resumo do dia: hora e clima em destaque, números em blocos e as listas do dia.
+  function briefing(b) {
+    const box = el('div', 'brief');
+    const hero = el('div', 'brief-hero');
+    const when = el('div', 'brief-when');
+    when.append(el('b', null, b.hora || ''), el('span', null, b.dia || ''));
+    hero.append(when);
+    if (b.clima && typeof b.clima === 'object') {
+      const sky = el('div', 'brief-sky');
+      sky.append(el('b', null, `${b.clima.temp}°`), el('span', null, `${b.clima.desc || ''} · máx ${b.clima.max}° · chuva ${b.clima.rain}%`), el('small', null, b.clima.city || ''));
+      hero.append(sky);
+    }
+    box.append(hero);
+    const tiles = el('div', 'brief-tiles');
+    (Array.isArray(b.numeros) ? b.numeros : []).slice(0, 4).forEach((item, i) => {
+      const tile = el('div', 'brief-tile'); tile.style.setProperty('--i', i);
+      if (item.tone) tile.dataset.tone = item.tone;
+      tile.append(el('b', null, String(item.value)), el('span', null, item.label || ''));
+      tiles.append(tile);
+    });
+    if (tiles.children.length) box.append(tiles);
+    (Array.isArray(b.listas) ? b.listas : []).slice(0, 3).forEach(group => {
+      if (!Array.isArray(group.itens) || !group.itens.length) return;
+      const block = el('div', 'brief-list');
+      block.append(el('h4', null, group.titulo || ''));
+      const ul = el('ul');
+      group.itens.slice(0, 6).forEach(text => ul.append(el('li', null, text)));
+      block.append(ul);
+      box.append(block);
+    });
+    return box;
+  }
+
+  // E-mails: quem mandou, o assunto e quando, um por linha, com o número que a Viv usa para ler.
+  function emails(list) {
+    const box = el('div', 'mails');
+    list.slice(0, 10).forEach((mail, i) => {
+      const row = el('div', 'mail'); row.style.setProperty('--i', i);
+      const who = String(mail.de || '').replace(/<[^>]*>/g, '').trim();
+      row.append(el('i', 'mail-n', String(mail.n || i + 1)), el('b', 'mail-from', who), el('span', 'mail-date', mail.data || ''),
+        el('span', 'mail-subject', mail.assunto || '(sem assunto)'));
       box.append(row);
     });
     return box;
@@ -233,7 +306,10 @@
     if (event.ok === false) head.append(el('span', 'card-flag', 'Falhou'));
     node.append(head);
     if (kind === 'weather' && event.weather && typeof event.weather === 'object') node.append(weather(event.weather));
-    if (event.body) node.append(kind === 'content' ? content(event.body, event.format) : inline(el('p', 'card-body'), event.body));
+    if (kind === 'chart' && window.VivCharts) { const drawn = window.VivCharts.build(event.chart); if (drawn) node.append(drawn); }
+    if (kind === 'briefing' && event.brief && typeof event.brief === 'object') node.append(briefing(event.brief));
+    else if (Array.isArray(event.emails) && event.emails.length) node.append(emails(event.emails));
+    else if (event.body) node.append(kind === 'content' ? content(event.body, event.format) : inline(el('p', 'card-body'), event.body));
     if (Array.isArray(event.results) && event.results.length) node.append(results(event.results));
     if (Array.isArray(event.sources) && event.sources.length) {
       const list = el('div', 'card-sources');
@@ -266,7 +342,14 @@
 
   function show(event) {
     const kind = KINDS[event.kind] ? event.kind : 'action';
-    const node = build(event, kind);
+    // painel ao vivo (monitor do PC): o mesmo painel recebe os números novos, sem fechar e abrir
+    if (kind === 'chart' && event.live && panel && panel.live === event.live && window.VivCharts) {
+      const old = panel.el.querySelector('.chart'), fresh = window.VivCharts.update(old, event.chart);
+      if (fresh && fresh !== old) old.replaceWith(fresh);
+      const note = panel.el.querySelector('.card-body'); if (note) note.textContent = event.body || '';
+      return;
+    }
+    const node = PANEL_KINDS[kind] || !window.VivToast ? build(event, kind) : window.VivToast.build(event, inline);
     if (PANEL_KINDS[kind]) {
       closePanel();
       node.classList.add('panel');
@@ -274,7 +357,7 @@
       close.type = 'button'; close.setAttribute('aria-label', 'Fechar painel');
       close.addEventListener('click', closePanel);
       node.querySelector('.card-head').append(close);
-      panel = { el: node };
+      panel = { el: node, live: event.live || '' };
       layer.prepend(node);
       life(node, PANEL_LIFE, () => { if (panel && panel.el === node) closePanel(); });
       stack();
@@ -297,7 +380,7 @@
       placeToasts();                                   // depois de entrar na página, quando já tem altura
       life(node, TOAST_LIFE, () => removeToast(card));
     }
-    node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day, .md > *').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
+    node.querySelectorAll('.result, li, tr, .weather-stat, .weather-day, .md > *, .sec').forEach((item, i) => item.style.setProperty('--i', Math.min(i, 24)));
     requestAnimationFrame(() => { node.classList.add('in'); setTimeout(drawLinks, 480); });
   }
 
@@ -323,12 +406,53 @@
     no.addEventListener('click', () => send('nao'));
     actions.append(no, yes);
     box.append(el('p', 'confirm-kicker', 'Confirmar ação'), el('p', 'confirm-text', event.text || event.name || ''), hint, bar, actions);
+    // O cartão espera ela começar a falar o pedido (até 2 s), para a explicação não chegar depois do clique.
+    const speaking = () => document.body.dataset.state === 'speaking';
+    box.hidden = !event.immediate && !speaking();
     confirmSlot.append(box);
     confirmTimer = setInterval(() => {
+      if (box.hidden && (speaking() || Date.now() - started >= 2000)) box.hidden = false;
       const left = Math.max(0, 1 - (Date.now() - started) / (total * 1000));
       fill.style.transform = `scaleX(${left})`;
       if (!left) confirmDone();
     }, 100);
+  }
+
+  // Perguntas com opções: uma linha por pergunta, no mesmo cartão. Responde-se falando ou clicando.
+  const askSlot = document.getElementById('ask-slot');
+  let askTimer = null;
+  function askDone() {
+    clearTimeout(askTimer); askTimer = null;
+    while (askSlot.firstChild) askSlot.firstChild.remove();
+  }
+
+  function ask(event) {
+    const options = Array.isArray(event.options) ? event.options : [];
+    if (!event.text || options.length < 2) return;
+    let box = askSlot.firstChild;
+    if (!box) {
+      box = el('div', 'confirm ask');
+      box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Pergunta da Viv');
+      box.append(el('p', 'confirm-kicker', 'Como você prefere?'), el('p', 'confirm-hint', 'Responda falando ou escolha abaixo.'));
+      askSlot.append(box);
+    }
+    const row = el('div', 'ask-row'), buttons = el('div', 'ask-options');
+    const close = () => { row.remove(); if (!box.querySelector('.ask-row')) askDone(); };
+    options.forEach(option => {
+      const button = el('button', option === event.suggestion ? 'suggested' : '', option);
+      button.type = 'button';
+      if (option === event.suggestion) button.title = 'Sugestão da Viv';
+      button.addEventListener('click', () => {
+        buttons.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pergunta: event.text, opcao: option }) }).then(close, close);
+      });
+      buttons.append(button);
+    });
+    row.append(el('p', 'confirm-text', event.text), buttons);
+    box.append(row);
+    clearTimeout(askTimer);
+    askTimer = setTimeout(askDone, 120000);
   }
 
   function hint(text) {
@@ -342,5 +466,5 @@
   };
   window.addEventListener('resize', relayout);
   window.addEventListener('viv-core-moved', drawLinks);
-  window.VivCards = { show, confirm, confirmDone, hint, closePanel, stack };
+  window.VivCards = { show, confirm, confirmDone, hint, closePanel, stack, ask, askDone };
 })();

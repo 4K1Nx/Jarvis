@@ -51,7 +51,7 @@ def ran():
 
 def make(owner=True, enrolled=True):
     told, clock = [], Clock()
-    gate = Gate(CFG, Context(CFG), FakeSpeaker(owner, enrolled), FakeAudit(), told.append, clock)
+    gate = Gate(CFG, Context(CFG), FakeSpeaker(owner, enrolled), FakeAudit(), told.append, clock, spawn=lambda job: job())
     return gate, told, clock
 
 
@@ -80,7 +80,50 @@ def test_spoken_yes_with_unknown_voice_keeps_pending(ran):
     gate, told, _ = make(owner=False)
     gate.submit("t_perigosa", {"x": "a"})
     gate.on_user_utterance("sim", AUDIO)
-    assert ran == [] and gate.pending is not None and told == []
+    assert ran == [] and gate.pending is not None
+    assert len(told) == 1 and "NÃO foi executada" in told[0] and "clicar em Sim" in told[0]
+
+
+def test_confirmation_closes_card_before_running_in_background(ran, monkeypatch):
+    from viv.bus import BUS
+    events, jobs = [], []
+    monkeypatch.setattr(BUS, "emit", lambda channel, text="", **extra: events.append(channel))
+    gate, told, _ = make()
+    gate.spawn = jobs.append
+    gate.submit("t_perigosa", {"x": "a"})
+    gate.on_user_utterance("sim", AUDIO)
+    assert "confirm_done" in events and ran == [] and gate.pending is None, "o cartão fecha antes de a ação rodar"
+    jobs[0]()
+    assert ran == [("perigosa", "a")] and "apagado a" in told[-1]
+
+
+def test_model_repeating_confirmed_request_does_not_ask_or_run_again(ran):
+    gate, told, clock = make()
+    gate.submit("t_perigosa", {"x": "a"})
+    assert gate.submit("t_perigosa", {"x": "a"}).startswith("pendente: este mesmo pedido já está na tela")
+    gate.on_user_utterance("sim", AUDIO)
+    again = gate.submit("t_perigosa", {"x": "a"})
+    assert gate.pending is None and ran == [("perigosa", "a")] and "já foi executado" in again and "apagado a" in again
+    assert gate.submit("t_perigosa", {"x": "b"}).startswith("pendente"), "outro pedido abre o cartão normalmente"
+    gate.on_click(False)
+    clock.now += 60
+    assert gate.submit("t_perigosa", {"x": "a"}).startswith("pendente"), "pedir de novo depois de um tempo vale"
+
+
+def test_failed_action_can_be_requested_again(ran):
+    gate, told, _ = make()
+    gate.submit("t_perigosa", {"x": "a"})
+    gate.on_click(True)
+    gate.last["result"] = "erro: falta conectar"
+    assert gate.submit("t_perigosa", {"x": "a"}).startswith("pendente")
+
+
+def test_repeat_while_confirmed_action_still_runs(ran):
+    gate, told, _ = make()
+    gate.spawn = lambda job: None                 # a ação confirmada ainda não terminou
+    gate.submit("t_perigosa", {"x": "a"})
+    gate.on_click(True)
+    assert "está sendo executado" in gate.submit("t_perigosa", {"x": "a"}) and ran == []
 
 
 @pytest.mark.parametrize("owner,enrolled", [(False, True), (False, False)])
@@ -122,12 +165,27 @@ def test_timeout_cancels_only_after_30_seconds(ran):
     assert gate.pending is None and ran == [] and len(told) == 1
 
 
-def test_second_dangerous_request_is_refused_and_first_kept(ran):
-    gate, told, _ = make()
+def test_second_dangerous_request_waits_its_turn_instead_of_being_refused(ran):
+    gate, told, clock = make()
     gate.submit("t_perigosa", {"x": "a"})
-    assert gate.submit("t_perigosa", {"x": "b"}).startswith("recusado")
+    assert gate.submit("t_perigosa", {"x": "b"}).startswith("pendente: há outra confirmação na tela")
+    assert gate.submit("t_perigosa", {"x": "b"}).startswith("pendente: este mesmo pedido já está na fila")
+    clock.now = 20.0
     gate.on_click(True)
-    assert ran == [("perigosa", "a")]
+    assert ran == [("perigosa", "a")] and gate.pending["args"] == {"x": "b"}
+    assert gate.pending["expires"] == 50.0                 # o prazo da segunda começa quando ela aparece
+    gate.on_click(False)
+    assert ran == [("perigosa", "a")] and gate.pending is None and gate.waiting == []
+
+
+def test_queue_of_confirmations_has_a_limit_and_expiry_moves_it_on(ran):
+    gate, told, clock = make()
+    for x in "abcd":
+        gate.submit("t_perigosa", {"x": x})
+    assert gate.submit("t_perigosa", {"x": "e"}).startswith("recusado")
+    clock.now = 31.0
+    gate.tick()                                             # a primeira venceu: a segunda entra
+    assert gate.pending["args"] == {"x": "b"} and ran == []
 
 
 def test_yes_and_click_without_pending_do_nothing(ran):
@@ -139,3 +197,28 @@ def test_yes_and_click_without_pending_do_nothing(ran):
 def test_no_registered_tool_can_confirm():
     registry.load_all()
     assert not [d["name"] for d in registry.declarations() if "confirm" in d["name"]]
+
+
+class FakeTasks:
+    def __init__(self):
+        self.calls = []
+
+    def run(self, name, args, call, title="", group=""):
+        self.calls.append((name, args))
+        return call()
+
+
+def test_common_tool_runs_through_tasks(ran):
+    gate, _, _ = make()
+    gate.tasks = FakeTasks()
+    assert gate.submit("t_comum", {"x": "a"}) == "feito a"
+    assert gate.tasks.calls == [("t_comum", {"x": "a"})]
+
+
+def test_dangerous_tool_reaches_tasks_only_after_confirmation(ran):
+    gate, _, _ = make()
+    gate.tasks = FakeTasks()
+    assert gate.submit("t_perigosa", {"x": "a"}).startswith("pendente")
+    assert gate.tasks.calls == [] and ran == []
+    gate.on_click(True)
+    assert gate.tasks.calls == [("t_perigosa", {"x": "a"})] and ran == [("perigosa", "a")]

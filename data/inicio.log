@@ -1,0 +1,220 @@
+
+--- 2026-11-14 13:27:57 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+Exception in thread Thread-22 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1599, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd2 in position 2: invalid continuation byte
+Exception in thread Thread-24 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1599, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd2 in position 2: invalid continuation byte
+Exception in thread Thread-27 (_readerthread):
+Exception in thread Thread-26 (_readerthread):
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self.run()
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1599, in _readerthread
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1599, in _readerthread
+    buffer.append(fh.read())
+                  ^^^^^^^^^
+    buffer.append(fh.read())
+  File "<frozen codecs>", line 322, in decode
+                  ^^^^^^^^^
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0x82 in position 23: invalid start byte
+  File "<frozen codecs>", line 322, in decode
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc6 in position 9: invalid continuation byte
+
+--- 2026-11-14 14:19:54 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-15 10:27:55 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-15 13:41:45 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+
+--- 2026-11-15 14:20:30 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+Viv: Sem conexão com o Gemini. Não consegui conectar depois de várias tentativas. Confira a internet.
+
+--- 2026-11-15 16:42:01 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-15 17:56:09 iniciando --briefing
+Viv pronta. Microfone: Microfone (Steam Streaming Micr
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-15 22:27:00 iniciando --briefing
+Viv pronta. Microfone: Microfone (Wireless Controller)
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+--- 2026-11-16 12:06:38 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
+Traceback (most recent call last):
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\Percy\AppData\Local\Programs\Python\Python312\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+--- 2026-11-16 15:15:13 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-17 09:59:30 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-17 11:24:44 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
+
+--- 2026-11-17 14:01:39 iniciando --briefing
+Viv pronta. Microfone: Microfone (High Definition Audi
+HUD: http://127.0.0.1:8765   Atalho: ctrl+alt+v   (Ctrl+C para sair)
+WhatsApp direto: iniciando o serviço local.
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:104: RuntimeWarning: divide by zero encountered in log10
+  wave_dBFS = 20 * np.log10(rms / int16_max)
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:108: RuntimeWarning: invalid value encountered in multiply
+  return wav * (10 ** (dBFS_change / 20))
+C:\Users\Percy\OneDrive\Documentos\Projetos\Viv\.venv\Lib\site-packages\resemblyzer\audio.py:72: RuntimeWarning: invalid value encountered in cast
+  pcm_wave = struct.pack("%dh" % len(wav), *(np.round(wav * int16_max)).astype(np.int16))
